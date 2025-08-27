@@ -164,6 +164,25 @@ def show_agent_list_and_chat():
              st.session_state['chat_messages'].append({"role": "user", "content": prompt})
              with st.spinner("🤖 Procesando..."): response_text, _ = enviar_mensaje_al_agente_n8n(selected_agent_chat_url, prompt, current_session_id)
              assistant_response = response_text or "No se recibió respuesta."; st.session_state['chat_messages'].append({"role": "assistant", "content": assistant_response})
+             
+             # 🆕 GUARDAR CONVERSACIÓN EN BASE DE DATOS AUTOMÁTICAMENTE
+             try:
+                 from database.database import save_conversation_message
+                 user_id = st.session_state.get('user_id')
+                 save_success = save_conversation_message(
+                     session_id=current_session_id,
+                     agent_id=selected_agent_id,
+                     user_message=prompt,
+                     agent_response=assistant_response,
+                     user_id=user_id
+                 )
+                 if save_success:
+                     log.info(f"✅ Conversation saved successfully for session {current_session_id}")
+                 else:
+                     log.warning(f"⚠️ Failed to save conversation for session {current_session_id}")
+             except Exception as save_error:
+                 log.error(f"❌ Error saving conversation: {save_error}", exc_info=True)
+             
              st.rerun()
     elif selected_agent_id and not selected_agent_chat_url: st.error(f"Agente '{selected_agent_name}' no tiene URL de chat configurada.")
     else: st.info("⬅️ Selecciona un agente para chatear.")
