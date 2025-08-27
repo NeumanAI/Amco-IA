@@ -1,6 +1,6 @@
 # --- database/database.py (Corregido Nombre DB y Verificación Esquema) ---
 
-from sqlalchemy import create_engine, text, inspect
+from sqlalchemy import create_engine, text, inspect, func
 from sqlalchemy.orm import sessionmaker, Session as SQLAlchemySession
 from sqlalchemy.exc import OperationalError
 from contextlib import contextmanager
@@ -9,7 +9,7 @@ import logging
 from typing import Optional
 
 # Importar modelos para que Base los conozca si apply_migrations se usa
-from .models import Base
+from .models import Base, Query
 
 log = logging.getLogger(__name__)
 # logging.basicConfig(level=logging.INFO)
@@ -83,3 +83,29 @@ def apply_sqlite_migrations(db_engine, sql_base, migrations_dir="database/migrat
      # ... (Usar versión robusta con historial si se activa en app.py) ...
      print(f"INFO: apply_sqlite_migrations called for dir '{migrations_dir}' (ensure implementation is robust).")
      pass
+
+
+def fetch_recent_conversations(limit: int = 20):
+    """Return recent conversation sessions ordered by last activity."""
+    results = []
+    with get_db_session() as db:
+        sessions = (
+            db.query(
+                Query.session_id,
+                func.min(Query.id).label("first_id"),
+                func.max(Query.created_at).label("last_ts"),
+            )
+            .group_by(Query.session_id)
+            .order_by(func.max(Query.created_at).desc())
+            .limit(limit)
+            .all()
+        )
+        for s in sessions:
+            first_q = (
+                db.query(Query.query_text).filter(Query.id == s.first_id).first()
+            )
+            title = first_q.query_text if first_q and first_q.query_text else "Sin título"
+            results.append(
+                {"session_id": s.session_id, "title": title, "last_ts": s.last_ts}
+            )
+    return results
