@@ -109,71 +109,100 @@ def show_agent_list_and_chat():
         st.warning("⚠️ No tienes acceso a ningún agente activo.")
         st.info("Contacta a un administrador para obtener permisos de acceso a agentes.")
     else:
-        # --- Mostrar Tarjetas ---
+        # --- Panel de Agentes Colapsible ---
         current_role = st.session_state.get('role_name', 'N/A')
-        st.subheader(f"Agentes Disponibles para tu Rol ({current_role})")
-        st.caption(f"Mostrando {len(active_agents_data)} agente(s) accesible(s)")
-        num_cols = 3; cols = st.columns(num_cols)
+        
+        # Estado del panel (colapsado por defecto para optimizar espacio)
+        if 'agent_panel_collapsed' not in st.session_state:
+            st.session_state.agent_panel_collapsed = True
+        
+        # Header del panel con botón de colapsar/expandir
+        col_header, col_toggle = st.columns([4, 1])
+        with col_header:
+            st.subheader(f"🤖 Agentes Disponibles ({len(active_agents_data)})")
+            st.caption(f"Rol: {current_role} • {len(active_agents_data)} agente(s) accesible(s)")
+        
+        with col_toggle:
+            toggle_text = "📤 Expandir" if st.session_state.agent_panel_collapsed else "📥 Colapsar"
+            if st.button(toggle_text, key="toggle_agent_panel", help="Mostrar/Ocultar panel de agentes"):
+                st.session_state.agent_panel_collapsed = not st.session_state.agent_panel_collapsed
+                st.rerun()
+        
+        # Contenedor del panel con clase CSS personalizada
+        panel_class = "collapsed" if st.session_state.agent_panel_collapsed else "expanded"
+        
+        if not st.session_state.agent_panel_collapsed:
+            # Panel expandido - mostrar tarjetas de agentes
+            with st.container():
+                st.markdown(f'<div class="agent-panel {panel_class}">', unsafe_allow_html=True)
+                
+                num_cols = 3 if len(active_agents_data) > 2 else len(active_agents_data)
+                cols = st.columns(num_cols)
+                
+                # Iterar sobre la LISTA DE DICCIONARIOS
+                for idx, agent_dict in enumerate(active_agents_data):
+                    # Acceder a los datos usando claves de diccionario .get()
+                    agent_id = agent_dict.get('id')
+                    agent_name = agent_dict.get('name', 'Sin Nombre')
+                    agent_desc = agent_dict.get('description', '')
+                    agent_model = agent_dict.get('model_name', 'N/A')
+                    agent_chat_url = agent_dict.get('n8n_chat_url')
+                    
+                    # Información de acceso RBAC
+                    can_interact = agent_dict.get('can_interact', False)
+                    can_view = agent_dict.get('can_view', False)
+                    access_display = agent_dict.get('access_display', '🔴 Sin Acceso')
 
-        # Iterar sobre la LISTA DE DICCIONARIOS
-        for idx, agent_dict in enumerate(active_agents_data):
-             # Acceder a los datos usando claves de diccionario .get()
-             agent_id = agent_dict.get('id')
-             agent_name = agent_dict.get('name', 'Sin Nombre')
-             agent_desc = agent_dict.get('description', '')
-             agent_model = agent_dict.get('model_name', 'N/A')
-             agent_chat_url = agent_dict.get('n8n_chat_url')
-             
-             # Información de acceso RBAC
-             can_interact = agent_dict.get('can_interact', False)
-             can_view = agent_dict.get('can_view', False)
-             access_display = agent_dict.get('access_display', '🔴 Sin Acceso')
+                    if not agent_id or not can_view: continue # Saltar si no tiene acceso de vista
 
-             if not agent_id or not can_view: continue # Saltar si no tiene acceso de vista
+                    col_index = idx % num_cols
+                    with cols[col_index]:
+                        is_selected = (st.session_state.get('chat_selected_agent_id') == agent_id)
+                        with st.container(border=True):
+                            st.markdown(f"##### {'✅ ' if is_selected else '🤖 '} {agent_name}")
+                            st.caption(f"Modelo: {agent_model}")
+                            st.markdown(f"<small>{agent_desc[:100]}{'...' if len(agent_desc)>100 else ''}</small>", unsafe_allow_html=True)
+                            
+                            # Mostrar nivel de acceso
+                            st.markdown(f"**Acceso:** {access_display}")
+                            st.markdown('<hr style="margin: 0.5rem 0;">', unsafe_allow_html=True)
 
-             col_index = idx % num_cols
-             with cols[col_index]:
-                  is_selected = (st.session_state.get('chat_selected_agent_id') == agent_id)
-                  with st.container(border=True):
-                       st.markdown(f"##### {'✅ ' if is_selected else '🤖 '} {agent_name}")
-                       st.caption(f"Modelo: {agent_model}")
-                       st.markdown(f"<small>{agent_desc[:100]}{'...' if len(agent_desc)>100 else ''}</small>", unsafe_allow_html=True)
-                       
-                       # Mostrar nivel de acceso
-                       st.markdown(f"**Acceso:** {access_display}")
-                       st.markdown('<hr style="margin: 0.5rem 0;">', unsafe_allow_html=True)
-
-                       button_type = "primary" if is_selected else "secondary"
-                       # Deshabilitar si no puede interactuar o no hay URL
-                       chat_button_disabled = not can_interact or not agent_chat_url
-                       
-                       if not can_interact:
-                           chat_button_help = "Solo tienes acceso de vista a este agente"
-                       elif not agent_chat_url:
-                           chat_button_help = "URL Chat no configurada"
-                       else:
-                           chat_button_help = "Iniciar conversación con este agente"
-
-                       if st.button("💬 Chatear Ahora", key=f"chat_btn_{agent_id}",
-                                    width='stretch', type=button_type,
-                                    disabled=chat_button_disabled, help=chat_button_help):
-
-                            # Guardar ID, Nombre Y URL específica del diccionario en session_state
-                            if st.session_state.get('chat_selected_agent_id') != agent_id:
-                                 log.info(f"Starting new chat with Agent ID: {agent_id}")
-                                 st.session_state.update({
-                                      'chat_selected_agent_id': agent_id,
-                                      'chat_selected_agent_name': agent_name,
-                                      'chat_selected_agent_chat_url': agent_chat_url, # <-- Guardar URL del dict
-                                      'chat_messages': [],
-                                      'chat_session_id': str(uuid.uuid4())
-                                 })
-                                 if 'chat_input_field' in st.session_state: del st.session_state['chat_input_field']
+                            button_type = "primary" if is_selected else "secondary"
+                            # Deshabilitar si no puede interactuar o no hay URL
+                            chat_button_disabled = not can_interact or not agent_chat_url
+                            
+                            if not can_interact:
+                                chat_button_help = "Solo tienes acceso de vista a este agente"
+                            elif not agent_chat_url:
+                                chat_button_help = "URL Chat no configurada"
                             else:
-                                 log.info(f"Reselecting chat with Agent ID: {agent_id}")
-                                 st.session_state['chat_selected_agent_chat_url'] = agent_chat_url # <-- Asegurar URL
-                                 if not st.session_state.get('chat_session_id'): st.session_state['chat_session_id'] = str(uuid.uuid4())
-                            st.rerun() # Refrescar
+                                chat_button_help = "Iniciar conversación con este agente"
+
+                            if st.button("💬 Chatear Ahora", key=f"chat_btn_{agent_id}",
+                                        width='stretch', type=button_type,
+                                        disabled=chat_button_disabled, help=chat_button_help):
+
+                                # Guardar ID, Nombre Y URL específica del diccionario en session_state
+                                if st.session_state.get('chat_selected_agent_id') != agent_id:
+                                    log.info(f"Starting new chat with Agent ID: {agent_id}")
+                                    st.session_state.update({
+                                        'chat_selected_agent_id': agent_id,
+                                        'chat_selected_agent_name': agent_name,
+                                        'chat_selected_agent_chat_url': agent_chat_url, # <-- Guardar URL del dict
+                                        'chat_messages': [],
+                                        'chat_session_id': str(uuid.uuid4())
+                                    })
+                                    if 'chat_input_field' in st.session_state: del st.session_state['chat_input_field']
+                                else:
+                                    log.info(f"Reselecting chat with Agent ID: {agent_id}")
+                                    st.session_state['chat_selected_agent_chat_url'] = agent_chat_url # <-- Asegurar URL
+                                    if not st.session_state.get('chat_session_id'): st.session_state['chat_session_id'] = str(uuid.uuid4())
+                                st.rerun() # Refrescar
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+        else:
+            # Panel colapsado - mostrar vista compacta
+            st.info(f"📥 Panel colapsado • {len(active_agents_data)} agente(s) disponible(s) • Haz clic en 'Expandir' para seleccionar")
 
     st.divider()
 

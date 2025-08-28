@@ -7,21 +7,28 @@ from database.models import Configuration # Importar el modelo Configuration
 
 # --- Obtención de Colores de Configuración ---
 def get_configured_colors() -> Dict[str, str]:
-    """Obtiene la paleta de colores desde la configuración con defaults."""
-    # Defaults razonables si no están en la BD
+    """Obtiene la paleta de colores desde la configuración con defaults mejorados."""
+    # Defaults con esquema de colores mejorado (dark green theme)
     defaults = {
-        'color_navbar_bg': '#478C3C',            # Verde oscuro AMCO (ejemplo)
+        'color_navbar_bg': '#2D5016',            # Verde oscuro profesional
         'color_navbar_text': '#FFFFFF',           # Blanco
-        'color_button_primary_bg': '#478C3C',     # Verde primario AMCO
-        'color_button_primary_text': '#FFFFFF',   # Blanco
-        'color_button_primary_hover_bg': '#3B7031', # Verde más oscuro para hover
-        'color_sidebar_bg': '#F0F2F6',            # Gris claro suave
-        'color_sidebar_text': '#1E1E1E',           # Texto oscuro en sidebar
+        'color_button_primary_bg': '#2D5016',     # Verde oscuro para botones
+        'color_button_primary_text': '#FFFFFF',   # Texto blanco en botones
+        'color_button_primary_hover_bg': '#1F3A0F', # Verde más oscuro para hover
+        'color_button_secondary_bg': '#4A7C59',   # Verde medio para botones secundarios
+        'color_button_secondary_text': '#FFFFFF', # Texto blanco
+        'color_sidebar_bg': '#F8F9FA',            # Gris muy claro
+        'color_sidebar_text': '#2C3E50',          # Texto oscuro en sidebar
         'color_base_bg': '#FFFFFF',               # Fondo principal blanco
-        'color_base_text': '#1E1E1E',           # Texto principal oscuro
-        'color_widget_border': '#CCCCCC',         # Borde gris claro para widgets
-        'color_table_header': '#F0F2F6',          # Fondo cabecera tabla (como sidebar)
-        'color_link': '#0068C9',                # Azul estándar para links
+        'color_base_text': '#2C3E50',             # Texto principal oscuro
+        'color_widget_border': '#E1E5E9',         # Borde gris muy claro
+        'color_table_header': '#F8F9FA',          # Fondo cabecera tabla
+        'color_link': '#2D5016',                  # Verde para links
+        'color_success': '#28A745',               # Verde éxito
+        'color_warning': '#FFC107',               # Amarillo advertencia
+        'color_danger': '#DC3545',                # Rojo peligro
+        'color_info': '#17A2B8',                  # Azul información
+        'color_accent': '#6C757D',                # Gris acento
     }
     colors = defaults.copy()
     try:
@@ -57,6 +64,180 @@ def generate_css_variables(colors: Dict[str, str]) -> str:
     return f"""
     :root {{
 {chr(10).join(css_vars_lines)}
+    }}
+    """
+
+def generate_responsive_styles() -> str:
+    """Genera estilos CSS responsivos mejorados."""
+    return """
+    /* === RESPONSIVE UI IMPROVEMENTS === */
+    
+    /* Hide query analysis and monitoring sections */
+    [data-testid="stSidebar"] .stSelectbox[data-baseweb="select"] + div:has(span:contains("Análisis")) {{
+        display: none !important;
+    }}
+    
+    [data-testid="stSidebar"] .stSelectbox[data-baseweb="select"] + div:has(span:contains("Monitoreo")) {{
+        display: none !important;
+    }}
+    
+    /* Improved button styles with dark green theme */
+    .stButton > button[kind="primary"] {{
+        background-color: var(--button-primary-bg) !important;
+        color: var(--button-primary-text) !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        padding: 0.5rem 1rem !important;
+        transition: all 0.2s ease !important;
+        box-shadow: 0 2px 4px rgba(45, 80, 22, 0.2) !important;
+    }}
+    
+    .stButton > button[kind="primary"]:hover {{
+        background-color: var(--button-primary-hover-bg) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 4px 8px rgba(45, 80, 22, 0.3) !important;
+    }}
+    
+    .stButton > button[kind="secondary"] {{
+        background-color: var(--button-secondary-bg) !important;
+        color: var(--button-secondary-text) !important;
+        border: 1px solid var(--button-secondary-bg) !important;
+        border-radius: 8px !important;
+        font-weight: 500 !important;
+        padding: 0.5rem 1rem !important;
+        transition: all 0.2s ease !important;
+    }}
+    
+    .stButton > button[kind="secondary"]:hover {{
+        background-color: var(--button-primary-bg) !important;
+        border-color: var(--button-primary-bg) !important;
+        transform: translateY(-1px) !important;
+    }}
+    
+    /* Improved chat input area - dynamically resizable */
+    .stChatInput > div > div > textarea {{
+        min-height: 60px !important;
+        max-height: 200px !important;
+        resize: vertical !important;
+        border-radius: 12px !important;
+        border: 2px solid var(--widget-border) !important;
+        font-size: 16px !important;
+        padding: 12px 16px !important;
+        transition: border-color 0.2s ease !important;
+    }}
+    
+    .stChatInput > div > div > textarea:focus {{
+        border-color: var(--button-primary-bg) !important;
+        box-shadow: 0 0 0 3px rgba(45, 80, 22, 0.1) !important;
+    }}
+    
+    /* Collapsible agent panel styles */
+    .agent-panel {{
+        background: var(--sidebar-bg);
+        border-radius: 12px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border: 1px solid var(--widget-border);
+        transition: all 0.3s ease;
+    }}
+    
+    .agent-panel.collapsed {{
+        height: 60px;
+        overflow: hidden;
+    }}
+    
+    .agent-panel.expanded {{
+        height: auto;
+    }}
+    
+    /* Improved conversation history styles */
+    .conversation-item {{
+        background: white;
+        border: 1px solid var(--widget-border);
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 8px;
+        transition: all 0.2s ease;
+        cursor: pointer;
+    }}
+    
+    .conversation-item:hover {{
+        border-color: var(--button-primary-bg);
+        box-shadow: 0 2px 8px rgba(45, 80, 22, 0.1);
+        transform: translateY(-1px);
+    }}
+    
+    .conversation-item.active {{
+        border-color: var(--button-primary-bg);
+        background: rgba(45, 80, 22, 0.05);
+    }}
+    
+    /* Responsive design for different screen sizes */
+    @media (max-width: 1200px) {{
+        .stApp > .main > .block-container {{
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }}
+        
+        .agent-panel {{
+            padding: 0.75rem;
+        }}
+    }}
+    
+    @media (max-width: 768px) {{
+        .stApp > .main > .block-container {{
+            padding-left: 0.5rem !important;
+            padding-right: 0.5rem !important;
+        }}
+        
+        .stButton > button {{
+            width: 100% !important;
+            margin-bottom: 0.5rem !important;
+        }}
+        
+        .agent-panel {{
+            padding: 0.5rem;
+        }}
+        
+        .conversation-item {{
+            padding: 8px;
+        }}
+    }}
+    
+    /* Fix menu overlay transparency issues */
+    [data-testid="stSidebar"] {{
+        background-color: var(--sidebar-bg) !important;
+        border-right: 1px solid var(--widget-border) !important;
+    }}
+    
+    .stSelectbox > div > div {{
+        background-color: white !important;
+        border: 1px solid var(--widget-border) !important;
+        border-radius: 8px !important;
+    }}
+    
+    /* Improved text readability */
+    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {{
+        color: var(--base-text) !important;
+        font-weight: 600 !important;
+    }}
+    
+    .stMarkdown p, .stMarkdown li {{
+        color: var(--base-text) !important;
+        line-height: 1.6 !important;
+    }}
+    
+    /* Enhanced table styles */
+    .stDataFrame {{
+        border-radius: 8px !important;
+        overflow: hidden !important;
+        border: 1px solid var(--widget-border) !important;
+    }}
+    
+    /* Smooth transitions for all interactive elements */
+    .stButton, .stSelectbox, .stTextInput, .stTextArea {{
+        transition: all 0.2s ease !important;
     }}
     """
 
@@ -134,7 +315,9 @@ def load_base_css() -> str:
                 width: 100% !important;
             }}
             
-            /* Override any potential responsive behavior */
+            /* === RESPONSIVE DESIGN IMPROVEMENTS === */
+            
+            /* Responsive breakpoints */
             @media (max-width: 768px) {{
                 .stApp > .main > .block-container {{
                     max-width: 100% !important;
@@ -554,8 +737,11 @@ def get_login_page_style() -> str:
 
 # --- Funciones Principales para Aplicar Estilos ---
 def apply_global_styles():
-    # ... (código existente en tu apply_global_styles) ...
+    """Aplica estilos globales mejorados con diseño responsivo."""
     try:
+        # Obtener colores configurados
+        colors = get_configured_colors()
+        
         # Hide default Sidebar items
         st.markdown("""
             <style>
@@ -565,16 +751,23 @@ def apply_global_styles():
             </style>
         """, unsafe_allow_html=True)
 
-        # ... (lectura de colores) ...
+        # Aplicar variables CSS de colores
         st.markdown(f"<style>{generate_css_variables(colors)}</style>", unsafe_allow_html=True)
-        # --- Carga el CSS modificado ---
+        
+        # Aplicar estilos base
         st.markdown(load_base_css(), unsafe_allow_html=True)
-        # --- Fin ---
+        
+        # Aplicar nuevos estilos responsivos
+        st.markdown(f"<style>{generate_responsive_styles()}</style>", unsafe_allow_html=True)
+        
+        # Aplicar estilos de navegación y botones
         st.markdown(get_navbar_css(), unsafe_allow_html=True)
         st.markdown(get_button_css(), unsafe_allow_html=True)
+        
     except Exception as e:
-        # ... (manejo de error existente) ...
+        # Fallback en caso de error
         st.markdown(load_base_css(), unsafe_allow_html=True)
+        st.markdown(f"<style>{generate_responsive_styles()}</style>", unsafe_allow_html=True)
 
 def show_navbar():
     """Muestra la barra de navegación superior fija usando estilos globales."""

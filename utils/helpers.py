@@ -93,19 +93,22 @@ def render_sidebar():
             st.image(logo_sidebar_url, width='stretch') # <-- CORRECCIÓN 3
             st.divider()
 
-        # 2. Definir la estructura del menú (secciones y páginas)
+        # 2. Definir la estructura del menú (secciones y páginas) - UI mejorada
         SECTIONS = {
             "AGENTES": [
                 "Agentes IA",
-                "Gestión de agentes IA",
+                "Gestión de agentes IA", 
                 "Historial de Conversaciones",
-                "Análisis de Consultas",
+                # "Análisis de Consultas", # Oculto para UI limpia
             ],
-            "HERRAMIENTAS": [
-                "Monitoreo",
+            "ADMINISTRACIÓN": [
+                # "Monitoreo", # Oculto para UI limpia
                 "Gestión de Usuarios",
                 "Roles",
+                "Control de Acceso",
                 "Configuración",
+            ],
+            "USUARIO": [
                 "Mi Perfil",
             ]
         }
