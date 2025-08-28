@@ -9,6 +9,10 @@ import logging
 import pytz
 from datetime import datetime
 from typing import Optional, Generator
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Importar modelos para que Base los conozca si apply_migrations se usa
 from .models import Base, Query, Conversation, Agent, User, Role, RoleAgentAccess, UserPreferences

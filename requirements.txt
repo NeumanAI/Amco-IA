@@ -12,3 +12,8 @@ bcrypt>=4.0.0 # Enhanced password hashing
 PyJWT>=2.8.0 # JSON Web Tokens for secure authentication
 cryptography>=41.0.0 # Encryption for secure data storage
 secrets # Built-in Python module for secure random generation
+
+# Supabase Dependencies
+psycopg2-binary>=2.9.0 # PostgreSQL adapter
+supabase>=2.0.0 # Supabase Python client
+python-dotenv>=1.0.0 # Environment variables management
