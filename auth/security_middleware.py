@@ -285,11 +285,14 @@ class SessionManager:
             access_token = TokenManager.generate_access_token(user_info)
             refresh_token = TokenManager.generate_refresh_token(user_info)
             
-            # Prepare session data
+            # Prepare session data (convert set to list for JSON serialization)
+            user_info_serializable = user_info.copy()
+            user_info_serializable['permissions'] = list(user_info['permissions'])
+            
             session_data = {
                 'access_token': access_token,
                 'refresh_token': refresh_token,
-                'user_info': user_info,
+                'user_info': user_info_serializable,
                 'created_at': datetime.now(colombia_tz).timestamp(),
                 'last_activity': datetime.now(colombia_tz).timestamp()
             }
@@ -319,6 +322,16 @@ class SessionManager:
     def validate_session() -> bool:
         """Validate current session and refresh if needed"""
         try:
+            # First check if user is already authenticated in current session
+            if st.session_state.get('authenticated', False):
+                # Check if session is still within timeout
+                last_activity = st.session_state.get('last_activity_time')
+                if last_activity:
+                    timeout_minutes = SecurityConfig.get_session_timeout()
+                    if datetime.now(colombia_tz) - last_activity <= timedelta(minutes=timeout_minutes):
+                        return True
+            
+            # Try to restore from encrypted storage
             session_data = SecureStorage.retrieve_session_data()
             if not session_data:
                 return False
@@ -333,7 +346,21 @@ class SessionManager:
             payload = TokenManager.validate_token(access_token, 'access')
             
             if payload:
-                # Token is valid, update activity
+                # Token is valid, restore session state
+                user_info = session_data.get('user_info', {})
+                permissions = user_info.get('permissions', [])
+                if isinstance(permissions, list):
+                    permissions = set(permissions)
+                
+                st.session_state.update({
+                    'authenticated': True,
+                    'username': user_info.get('username'),
+                    'user_id': user_info.get('user_id'),
+                    'role_name': user_info.get('role_name'),
+                    'permissions': permissions,
+                    'last_activity_time': datetime.now(colombia_tz)
+                })
+                
                 SessionManager.update_activity()
                 return True
             
@@ -347,7 +374,22 @@ class SessionManager:
                 session_data['last_activity'] = datetime.now(colombia_tz).timestamp()
                 SecureStorage.store_session_data(session_data)
                 
-                log.info(f"Session refreshed for user {session_data.get('user_info', {}).get('username')}")
+                # Restore session state
+                user_info = session_data.get('user_info', {})
+                permissions = user_info.get('permissions', [])
+                if isinstance(permissions, list):
+                    permissions = set(permissions)
+                
+                st.session_state.update({
+                    'authenticated': True,
+                    'username': user_info.get('username'),
+                    'user_id': user_info.get('user_id'),
+                    'role_name': user_info.get('role_name'),
+                    'permissions': permissions,
+                    'last_activity_time': datetime.now(colombia_tz)
+                })
+                
+                log.info(f"Session refreshed for user {user_info.get('username')}")
                 return True
             
             # Both tokens invalid
@@ -579,18 +621,8 @@ def initialize_security_system() -> None:
         
         # Try to restore session from encrypted storage
         if not st.session_state.get('authenticated', False):
-            session_data = SecureStorage.retrieve_session_data()
-            if session_data and SessionManager.validate_session():
-                user_info = session_data.get('user_info', {})
-                st.session_state.update({
-                    'authenticated': True,
-                    'username': user_info.get('username'),
-                    'user_id': user_info.get('user_id'),
-                    'role_name': user_info.get('role_name'),
-                    'permissions': user_info.get('permissions', set()),
-                    'last_activity_time': datetime.now(colombia_tz)
-                })
-                log.info(f"Session restored for user {user_info.get('username')}")
+            # The session validation will handle restoration automatically
+            SessionManager.validate_session()
         
     except Exception as e:
         log.error(f"Error initializing security system: {e}", exc_info=True)
