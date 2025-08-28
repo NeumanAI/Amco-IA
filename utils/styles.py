@@ -183,6 +183,16 @@ def generate_responsive_styles() -> str:
         .agent-panel {{
             padding: 0.75rem;
         }}
+        
+        /* Conversation history optimizations for tablets */
+        .conversation-item {{
+            padding: 10px;
+        }}
+        
+        /* Adjust column gaps for tablets */
+        [data-testid="column"] {{
+            gap: 0.5rem !important;
+        }}
     }}
     
     @media (max-width: 768px) {{
@@ -194,6 +204,7 @@ def generate_responsive_styles() -> str:
         .stButton > button {{
             width: 100% !important;
             margin-bottom: 0.5rem !important;
+            font-size: 14px !important;
         }}
         
         .agent-panel {{
@@ -202,6 +213,69 @@ def generate_responsive_styles() -> str:
         
         .conversation-item {{
             padding: 8px;
+            margin-bottom: 4px;
+        }}
+        
+        /* Mobile-specific conversation styling */
+        .conversation-item .stButton > button {{
+            font-size: 12px !important;
+            padding: 0.3rem 0.6rem !important;
+        }}
+        
+        .conversation-item .stCaption {{
+            font-size: 11px !important;
+            line-height: 1.2 !important;
+        }}
+        
+        /* Mobile tabs styling */
+        .stTabs [data-baseweb="tab-list"] {{
+            gap: 0 !important;
+        }}
+        
+        .stTabs [data-baseweb="tab"] {{
+            padding: 8px 12px !important;
+            font-size: 14px !important;
+        }}
+        
+        /* Mobile popover adjustments */
+        [data-baseweb="popover"] {{
+            max-width: 90vw !important;
+        }}
+        
+        /* Mobile chat message styling */
+        .stChatMessage {{
+            margin-bottom: 0.5rem !important;
+        }}
+        
+        .stChatMessage .stMarkdown {{
+            font-size: 14px !important;
+        }}
+        
+        /* Mobile container heights */
+        [data-testid="stVerticalBlock"] > div:has(.stContainer) {{
+            max-height: 60vh !important;
+        }}
+    }}
+    
+    @media (max-width: 480px) {{
+        /* Extra small mobile devices */
+        .stApp > .main > .block-container {{
+            padding-left: 0.25rem !important;
+            padding-right: 0.25rem !important;
+        }}
+        
+        .conversation-item {{
+            padding: 6px;
+        }}
+        
+        .stButton > button {{
+            font-size: 12px !important;
+            padding: 0.25rem 0.5rem !important;
+        }}
+        
+        /* Very compact mobile layout */
+        .stColumns {{
+            gap: 0.25rem !important;
         }}
     }}
     

@@ -107,6 +107,53 @@ def continue_conversation(session_id: str, agent_id: int, agent_name: str, conve
         log.error(f"Error loading conversation {session_id} for continuation: {e}", exc_info=True)
         st.error("Error al cargar la conversación")
 
+def render_mobile_conversation_list(conversations):
+    """Renderiza la lista de conversaciones optimizada para móvil"""
+    selected_session = st.session_state.get('selected_conversation_session')
+    
+    # Lista compacta para móvil
+    with st.container(height=500):
+        for i, conv in enumerate(conversations):
+            # Card compacta para móvil
+            with st.container():
+                col_main, col_action = st.columns([4, 1])
+                
+                with col_main:
+                    # Título más corto para móvil
+                    title_display = conv['title'][:40] + ("..." if len(conv['title']) > 40 else "")
+                    
+                    if st.button(
+                        f"{'✅ ' if conv['session_id'] == selected_session else '💬 '}{title_display}",
+                        key=f"mobile_conv_{conv['session_id']}",
+                        type="primary" if conv['session_id'] == selected_session else "secondary",
+                        use_container_width=True
+                    ):
+                        st.session_state['selected_conversation_session'] = conv['session_id']
+                        st.session_state['selected_conversation_title'] = conv['title']
+                        st.rerun()
+                    
+                    # Metadata compacta
+                    st.caption(f"🤖 {conv['agent_name']} • {conv['message_count']} mensajes • {format_datetime(conv['last_activity'])}")
+                
+                with col_action:
+                    # Menú de acciones móvil
+                    with st.popover("⋮", use_container_width=True):
+                        if st.button("💬 Continuar", key=f"mobile_continue_{conv['session_id']}", use_container_width=True):
+                            continue_conversation(conv['session_id'], conv['agent_id'], conv['agent_name'], conv['title'])
+                            st.switch_page("pages/01_Agentes_IA.py")
+                        
+                        if st.button("✏️ Renombrar", key=f"mobile_rename_{conv['session_id']}", use_container_width=True):
+                            st.session_state[f'editing_title_{conv["session_id"]}'] = True
+                            st.rerun()
+                        
+                        if st.button("🗑️ Eliminar", key=f"mobile_delete_{conv['session_id']}", use_container_width=True):
+                            if delete_conversation(conv['session_id']):
+                                st.success("Eliminada")
+                                st.rerun()
+                
+                if i < len(conversations) - 1:
+                    st.divider()
+
 def display_conversation_messages(session_id: str, conversation_title: str):
     """Muestra los mensajes de una conversación específica"""
     messages = get_conversation_messages(session_id)
@@ -115,11 +162,29 @@ def display_conversation_messages(session_id: str, conversation_title: str):
         st.info("No hay mensajes en esta conversación")
         return
     
-    st.subheader(f"💬 {conversation_title}")
-    st.caption(f"Sesión: `{session_id}` | {len(messages)} mensajes")
+    # Header con botón para continuar conversación
+    col_title, col_continue = st.columns([3, 1])
+    with col_title:
+        st.subheader(f"💬 {conversation_title}")
+        st.caption(f"Sesión: `{session_id}` | {len(messages)} mensajes")
     
-    # Contenedor con scroll para mensajes
-    with st.container(height=500, border=True):
+    with col_continue:
+        # Obtener info del agente de la conversación
+        if messages:
+            # Buscar agent_id en los mensajes o usar el primer mensaje para obtener info
+            conversations = get_conversations_for_user(st.session_state.get('user_id'), limit=50)
+            current_conv = next((c for c in conversations if c['session_id'] == session_id), None)
+            
+            if current_conv and st.button("💬 Continuar", key=f"continue_from_view_{session_id}", type="primary", use_container_width=True):
+                continue_conversation(session_id, current_conv['agent_id'], current_conv['agent_name'], conversation_title)
+                st.success("🔄 Cargando...")
+                time.sleep(0.5)
+                st.switch_page("pages/01_Agentes_IA.py")
+    
+    # Contenedor con scroll para mensajes - altura adaptativa
+    container_height = 450 if st.session_state.get('is_mobile', False) else 550
+    
+    with st.container(height=container_height, border=True):
         for msg in messages:
             # Mensaje del usuario
             with st.chat_message("user", avatar="🧑‍💻"):
@@ -141,7 +206,7 @@ def display_conversation_messages(session_id: str, conversation_title: str):
 
 @requires_permission(PAGE_PERMISSION)
 def show_conversation_history_page() -> None:
-    """Página principal del historial de conversaciones - Diseño responsivo mejorado"""
+    """Página principal del historial de conversaciones - Diseño responsivo optimizado"""
     
     # Header mejorado con botón de actualización
     col_title, col_refresh = st.columns([4, 1])
@@ -153,175 +218,192 @@ def show_conversation_history_page() -> None:
         if st.button("🔄", help="Actualizar historial", key="refresh_history", type="secondary"):
             st.rerun()
     
-    # Layout responsivo: sidebar de conversaciones + área de chat
-    col_sidebar, col_chat = st.columns([1, 2.5], gap="medium")
-    
-    with col_sidebar:
-        st.subheader("📋 Conversaciones Recientes")
-        
-        # Obtener conversaciones del usuario actual
-        user_id = st.session_state.get('user_id')
-        conversations = get_conversations_for_user(user_id, limit=50)
-        
-        if not conversations:
-            st.info("🔍 No hay conversaciones guardadas")
-            st.markdown("---")
-            st.caption("💡 **Tip:** Las conversaciones se guardan automáticamente cuando chateas con los agentes.")
-            return
-        
-        # Estado para conversación seleccionada
-        selected_session = st.session_state.get('selected_conversation_session')
-        
-        # Lista de conversaciones scrollable mejorada
-        with st.container(height=600):
-            for i, conv in enumerate(conversations):
-                # Crear contenedor con clase CSS personalizada para cada conversación
-                conversation_class = "conversation-item active" if conv['session_id'] == selected_session else "conversation-item"
-                
-                st.markdown(f'<div class="{conversation_class}">', unsafe_allow_html=True)
-                
-                # Header de la conversación
-                col_info, col_actions = st.columns([3, 1])
-                
-                with col_info:
-                    # Título clickeable
-                    if st.button(
-                        conv['title'][:50] + ("..." if len(conv['title']) > 50 else ""),
-                        key=f"conv_select_{conv['session_id']}",
-                        type="secondary" if conv['session_id'] != selected_session else "primary",
-                        help=f"Ver conversación con {conv['agent_name']}",
-                        use_container_width=True
-                    ):
-                        st.session_state['selected_conversation_session'] = conv['session_id']
-                        st.session_state['selected_conversation_title'] = conv['title']
-                        if f'editing_title_{conv["session_id"]}' in st.session_state:
-                            del st.session_state[f'editing_title_{conv["session_id"]}']
-                        st.rerun()
-                    
-                    # Metadata de la conversación
-                    st.caption(f"🤖 {conv['agent_name']} • 💬 {conv['message_count']} mensajes • 🕒 {format_datetime(conv['last_activity'])}")
-                
-                with col_actions:
-                    # Menú de opciones compacto
-                    col_continue, col_menu = st.columns(2)
-                    
-                    with col_continue:
-                        if st.button("💬", key=f"quick_continue_{conv['session_id']}", help="Continuar conversación", use_container_width=True):
-                            continue_conversation(conv['session_id'], conv['agent_id'], conv['agent_name'], conv['title'])
-                            st.success("🔄 Cargando conversación...")
-                            time.sleep(0.5)
-                            st.switch_page("pages/01_Agentes_IA.py")
-                
-                    with col_menu:
-                        # Menú de opciones con popover
-                        with st.popover("⋮", use_container_width=True):
-                            st.caption(f"**{conv['agent_name']}**")
-                            st.caption(f"📅 {format_datetime(conv['last_activity'])}")
-                            st.caption(f"💬 {conv['message_count']} mensajes")
-                            
-                            st.divider()
-                            
-                            # Opción renombrar
-                            if st.button("✏️ Renombrar", key=f"rename_btn_{conv['session_id']}", use_container_width=True):
-                                st.session_state[f'editing_title_{conv["session_id"]}'] = True
-                                st.rerun()
-                            
-                            # Opción eliminar
-                            if st.button("🗑️ Eliminar", key=f"delete_btn_{conv['session_id']}", use_container_width=True, type="secondary"):
-                                if st.session_state.get(f'confirm_delete_{conv["session_id"]}'):
-                                    # Confirmar eliminación
-                                    if delete_conversation(conv['session_id']):
-                                        st.success("Conversación eliminada")
-                                        # Limpiar selección si era la conversación actual
-                                        if selected_session == conv['session_id']:
-                                            if 'selected_conversation_session' in st.session_state:
-                                                del st.session_state['selected_conversation_session']
-                                            if 'selected_conversation_title' in st.session_state:
-                                                del st.session_state['selected_conversation_title']
-                                        st.rerun()
-                                    else:
-                                        st.error("Error al eliminar conversación")
-                                else:
-                                    # Pedir confirmación
-                                    st.session_state[f'confirm_delete_{conv["session_id"]}'] = True
-                                st.rerun()
-                        
-                        # Mostrar confirmación de eliminación
-                        if st.session_state.get(f'confirm_delete_{conv["session_id"]}'):
-                            st.warning("⚠️ ¿Confirmar eliminación?")
-                            col_yes, col_no = st.columns(2)
-                            with col_yes:
-                                if st.button("✅ Sí", key=f"confirm_yes_{conv['session_id']}"):
-                                    # La lógica de eliminación se ejecuta arriba
-                                    pass
-                            with col_no:
-                                if st.button("❌ No", key=f"confirm_no_{conv['session_id']}"):
-                                    del st.session_state[f'confirm_delete_{conv["session_id"]}']
-                                    st.rerun()
-                
-                # Campo de edición de título (si está en modo edición)
-                if st.session_state.get(f'editing_title_{conv["session_id"]}'):
-                    new_title = st.text_input(
-                        "Nuevo título:",
-                        value=conv['title'],
-                        key=f"new_title_input_{conv['session_id']}",
-                        placeholder="Ingresa el nuevo título..."
-                    )
-                    
-                    col_save, col_cancel = st.columns(2)
-                    with col_save:
-                        if st.button("💾 Guardar", key=f"save_title_{conv['session_id']}", type="primary"):
-                            if new_title.strip():
-                                if update_conversation_title(conv['session_id'], new_title.strip()):
-                                    st.success("Título actualizado")
-                                    del st.session_state[f'editing_title_{conv["session_id"]}']
-                                    # Actualizar título en session state si es la conversación actual
-                                    if selected_session == conv['session_id']:
-                                        st.session_state['selected_conversation_title'] = new_title.strip()
-                                    st.rerun()
-                                else:
-                                    st.error("Error al actualizar título")
-                            else:
-                                st.warning("El título no puede estar vacío")
-                    
-                    with col_cancel:
-                        if st.button("❌ Cancelar", key=f"cancel_title_{conv['session_id']}"):
-                            del st.session_state[f'editing_title_{conv["session_id"]}']
-                            st.rerun()
-                
-                # Cerrar div de conversación
-                st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Separador entre conversaciones
-                if i < len(conversations) - 1:
-                    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Área de chat
-    with col_chat:
-        selected_session = st.session_state.get('selected_conversation_session')
-        selected_title = st.session_state.get('selected_conversation_title', 'Conversación')
-        
-        if selected_session:
-            # Mostrar conversación seleccionada
-            display_conversation_messages(selected_session, selected_title)
-        else:
-            # Estado vacío - interfaz limpia
-            st.info("👈 Selecciona una conversación para ver los mensajes")
-            
-            # Mensaje de bienvenida mejorado
-            st.markdown("---")
-            st.markdown("### 💬 Historial de Conversaciones")
+    # Instrucciones colapsables en la parte superior para optimizar espacio
+    with st.expander("ℹ️ Cómo usar el Historial de Conversaciones", expanded=False):
+        col_info1, col_info2 = st.columns(2)
+        with col_info1:
             st.markdown("""
-            Aquí puedes revisar todas tus conversaciones anteriores con los agentes IA.
-            
-            **Funcionalidades disponibles:**
-            - 📖 Ver mensajes completos de cualquier conversación
-            - ✏️ Renombrar conversaciones para mejor organización  
-            - 💬 Continuar conversaciones directamente desde aquí
-            - 🗑️ Eliminar conversaciones que ya no necesites
-            
-            Selecciona una conversación del panel izquierdo para comenzar.
+            **📖 Ver y Gestionar:**
+            - Haz clic en cualquier conversación para ver todos los mensajes
+            - Usa el menú (⋮) para renombrar conversaciones
+            - Elimina conversaciones que ya no necesites
             """)
+        with col_info2:
+            st.markdown("""
+            **💬 Continuar Chats:**
+            - Botón rápido (💬) para continuar chateando
+            - Se cargan automáticamente todos los mensajes anteriores
+            - Mantiene el contexto completo de la conversación
+            """)
+        
+        st.info("💡 **Tip:** Las conversaciones se guardan automáticamente cuando chateas con los agentes.")
+    
+    # Obtener conversaciones del usuario actual
+    user_id = st.session_state.get('user_id')
+    conversations = get_conversations_for_user(user_id, limit=50)
+    
+    if not conversations:
+        st.warning("🔍 No hay conversaciones guardadas")
+        st.info("Comienza a chatear con los agentes para ver tus conversaciones aquí.")
+        return
+    
+    # Layout responsivo optimizado
+    # Detectar si es móvil basado en el ancho de pantalla (simulado)
+    is_mobile = st.session_state.get('is_mobile', False)
+    
+    if is_mobile:
+        # Layout móvil: Stack vertical con tabs para mejor UX
+        tab_list, tab_chat = st.tabs(["📋 Conversaciones", "💬 Chat"])
+        
+        with tab_list:
+            render_mobile_conversation_list(conversations)
+        
+        with tab_chat:
+            selected_session = st.session_state.get('selected_conversation_session')
+            if selected_session:
+                selected_title = st.session_state.get('selected_conversation_title', 'Conversación')
+                display_conversation_messages(selected_session, selected_title)
+            else:
+                st.info("📱 Selecciona una conversación en la pestaña 'Conversaciones'")
+    else:
+        # Layout desktop: Sidebar optimizado + área de chat (más espacio para conversaciones)
+        col_sidebar, col_chat = st.columns([1.3, 2.7], gap="medium")
+        
+        with col_sidebar:
+            render_desktop_conversation_list(conversations)
+        
+        with col_chat:
+            selected_session = st.session_state.get('selected_conversation_session')
+            selected_title = st.session_state.get('selected_conversation_title', 'Conversación')
+            
+            if selected_session:
+                # Mostrar conversación seleccionada
+                display_conversation_messages(selected_session, selected_title)
+            else:
+                # Estado vacío - interfaz limpia y funcional
+                st.info("👈 Selecciona una conversación para ver los mensajes")
+                
+                # Botón para alternar vista móvil (para testing)
+                st.markdown("---")
+                col_mobile_toggle, col_space = st.columns([1, 2])
+                with col_mobile_toggle:
+                    current_mobile = st.session_state.get('is_mobile', False)
+                    if st.button(f"📱 {'Desktop' if current_mobile else 'Mobile'} Mode", help="Alternar vista para testing"):
+                        st.session_state['is_mobile'] = not current_mobile
+                        st.rerun()
+
+def render_desktop_conversation_list(conversations):
+    """Renderiza la lista de conversaciones optimizada para desktop"""
+    st.subheader("📋 Conversaciones Recientes")
+    
+    selected_session = st.session_state.get('selected_conversation_session')
+    
+    # Lista de conversaciones con altura optimizada para desktop
+    with st.container(height=650):  # Más altura para desktop
+        for i, conv in enumerate(conversations):
+            # Crear contenedor con clase CSS personalizada para cada conversación
+            conversation_class = "conversation-item active" if conv['session_id'] == selected_session else "conversation-item"
+            
+            st.markdown(f'<div class="{conversation_class}">', unsafe_allow_html=True)
+            
+            # Layout optimizado para desktop
+            col_main, col_actions = st.columns([3.5, 1])
+            
+            with col_main:
+                # Título clickeable con más espacio
+                title_display = conv['title'][:60] + ("..." if len(conv['title']) > 60 else "")
+                
+                if st.button(
+                    title_display,
+                    key=f"desktop_conv_select_{conv['session_id']}",
+                    type="primary" if conv['session_id'] == selected_session else "secondary",
+                    help=f"Ver conversación con {conv['agent_name']}",
+                    use_container_width=True
+                ):
+                    st.session_state['selected_conversation_session'] = conv['session_id']
+                    st.session_state['selected_conversation_title'] = conv['title']
+                    if f'editing_title_{conv["session_id"]}' in st.session_state:
+                        del st.session_state[f'editing_title_{conv["session_id"]}']
+                    st.rerun()
+                
+                # Metadata más detallada para desktop
+                st.caption(f"🤖 **{conv['agent_name']}** • 💬 {conv['message_count']} mensajes • 🕒 {format_datetime(conv['last_activity'])}")
+            
+            with col_actions:
+                # Acciones compactas para desktop
+                col_continue, col_menu = st.columns(2)
+                
+                with col_continue:
+                    if st.button("💬", key=f"desktop_continue_{conv['session_id']}", help="Continuar conversación", use_container_width=True):
+                        continue_conversation(conv['session_id'], conv['agent_id'], conv['agent_name'], conv['title'])
+                        st.success("🔄 Cargando...")
+                        time.sleep(0.5)
+                        st.switch_page("pages/01_Agentes_IA.py")
+                
+                with col_menu:
+                    # Menú de opciones con popover
+                    with st.popover("⋮", use_container_width=True):
+                        st.caption(f"**{conv['agent_name']}**")
+                        st.caption(f"📅 {format_datetime(conv['last_activity'])}")
+                        st.caption(f"💬 {conv['message_count']} mensajes")
+                        
+                        st.divider()
+                        
+                        # Opción renombrar
+                        if st.button("✏️ Renombrar", key=f"desktop_rename_{conv['session_id']}", use_container_width=True):
+                            st.session_state[f'editing_title_{conv["session_id"]}'] = True
+                            st.rerun()
+                        
+                        # Opción eliminar con confirmación simplificada
+                        if st.button("🗑️ Eliminar", key=f"desktop_delete_{conv['session_id']}", use_container_width=True, type="secondary"):
+                            if delete_conversation(conv['session_id']):
+                                st.success("Conversación eliminada")
+                                # Limpiar selección si era la conversación actual
+                                if selected_session == conv['session_id']:
+                                    if 'selected_conversation_session' in st.session_state:
+                                        del st.session_state['selected_conversation_session']
+                                    if 'selected_conversation_title' in st.session_state:
+                                        del st.session_state['selected_conversation_title']
+                                st.rerun()
+                            else:
+                                st.error("Error al eliminar")
+            
+            # Campo de edición de título (si está en modo edición)
+            if st.session_state.get(f'editing_title_{conv["session_id"]}'):
+                new_title = st.text_input(
+                    "Nuevo título:",
+                    value=conv['title'],
+                    key=f"desktop_title_input_{conv['session_id']}",
+                    placeholder="Ingresa el nuevo título..."
+                )
+                
+                col_save, col_cancel = st.columns(2)
+                with col_save:
+                    if st.button("💾 Guardar", key=f"desktop_save_{conv['session_id']}", type="primary"):
+                        if new_title.strip():
+                            if update_conversation_title(conv['session_id'], new_title.strip()):
+                                st.success("Título actualizado")
+                                del st.session_state[f'editing_title_{conv["session_id"]}']
+                                # Actualizar título en session state si es la conversación actual
+                                if selected_session == conv['session_id']:
+                                    st.session_state['selected_conversation_title'] = new_title.strip()
+                                st.rerun()
+                            else:
+                                st.error("Error al actualizar título")
+                        else:
+                            st.warning("El título no puede estar vacío")
+                
+                with col_cancel:
+                    if st.button("❌ Cancelar", key=f"desktop_cancel_{conv['session_id']}"):
+                        del st.session_state[f'editing_title_{conv["session_id"]}']
+                        st.rerun()
+            
+            # Cerrar div de conversación
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Separador entre conversaciones
+            if i < len(conversations) - 1:
+                st.markdown("<br>", unsafe_allow_html=True)
 
 # Aplicar estilos y renderizar
 apply_global_styles()
