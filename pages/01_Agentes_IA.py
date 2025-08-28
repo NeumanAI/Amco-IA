@@ -8,7 +8,7 @@ from sqlalchemy.exc import OperationalError
 from typing import Optional, List, Dict, Any, Tuple # Importar Tuple
 
 # Importar dependencias locales
-from auth.auth import requires_permission
+from auth.auth import requires_permission, get_current_user_accessible_agents, check_current_user_agent_access
 from utils.api_client import enviar_mensaje_al_agente_n8n
 from database.database import get_db_session
 from database.models import Agent # Solo para la query
@@ -39,33 +39,39 @@ def init_chat_page_state():
         if key not in st.session_state: st.session_state[key] = default
 
 # --- Cargar Datos de Agentes Activos (Devuelve lista de Dicts) ---
-def load_local_active_agents_data() -> Tuple[List[Dict[str, Any]], Optional[Exception], Optional[str]]:
-    """Carga datos de agentes activos locales como lista de diccionarios."""
+def load_user_accessible_agents_data() -> Tuple[List[Dict[str, Any]], Optional[Exception], Optional[str]]:
+    """Carga datos de agentes accesibles para el usuario actual basado en su rol."""
     agents_data_list: List[Dict[str, Any]] = []
     error: Optional[Exception] = None; error_message: Optional[str] = None
-    log.info("[Agentes IA] Loading active agents data...")
+    log.info("[Agentes IA] Loading accessible agents data for current user...")
+    
     try:
-        with get_db_session() as db:
-            log.info("[Agentes IA] DB session obtained.")
-            # Query para seleccionar solo las columnas necesarias
-            query_result = db.query(
-                Agent.id,
-                Agent.name,
-                Agent.description,
-                Agent.model_name,
-                Agent.n8n_chat_url # Necesitamos la URL para el botón
-            ).filter(Agent.status == 'active').order_by(Agent.name).all()
-            log.info(f"[Agentes IA] Query OK. Found {len(query_result)} active agents.")
-
-            # Convertir resultados (tuples) en lista de diccionarios
-            for row in query_result:
-                agents_data_list.append({
-                    "id": row.id,
-                    "name": row.name,
-                    "description": row.description or '',
-                    "model_name": row.model_name or 'N/A',
-                    "n8n_chat_url": row.n8n_chat_url # Guardar la URL
-                })
+        # Obtener agentes accesibles usando la función RBAC
+        accessible_agents = get_current_user_accessible_agents()
+        
+        if not accessible_agents:
+            log.info("[Agentes IA] No accessible agents found for current user")
+            return [], None, None
+        
+        # Procesar los agentes accesibles
+        for agent in accessible_agents:
+            # Añadir información de acceso
+            access_icon = "🟢" if agent.get('can_interact') else "🟡" if agent.get('can_view') else "🔴"
+            access_text = "Completo" if agent.get('can_interact') else "Solo Vista" if agent.get('can_view') else "Sin Acceso"
+            
+            agents_data_list.append({
+                "id": agent['id'],
+                "name": agent['name'],
+                "description": agent.get('description', 'Sin descripción'),
+                "model_name": agent.get('model_name', 'N/A'),
+                "n8n_chat_url": agent.get('n8n_chat_url'),
+                'access_level': agent.get('access_level', 'no_access'),
+                'can_view': agent.get('can_view', False),
+                'can_interact': agent.get('can_interact', False),
+                'access_display': f"{access_icon} {access_text}"
+            })
+        
+        log.info(f"[Agentes IA] Loaded {len(agents_data_list)} accessible agents for user")
 
     except OperationalError as oe: log.error(f"[Agentes IA] OpError: {oe}", exc_info=True); error = oe; error_message = f"Error DB: {oe}"
     except Exception as e: log.error(f"[Agentes IA] Generic error: {e}", exc_info=True); error = e; error_message = f"Error inesperado: {e}"
@@ -90,8 +96,8 @@ def show_agent_list_and_chat():
     st.caption("Selecciona un agente definido localmente para iniciar una conversación.")
     init_chat_page_state()
 
-    # Cargar datos de agentes (ahora es una lista de dicts)
-    active_agents_data, error, error_message = load_local_active_agents_data()
+    # Cargar datos de agentes accesibles para el usuario actual (RBAC)
+    active_agents_data, error, error_message = load_user_accessible_agents_data()
 
     if st.button("🔄 Refrescar Lista"): st.rerun()
 
@@ -100,10 +106,13 @@ def show_agent_list_and_chat():
         st.warning("Verifica la BD y las migraciones.")
         st.stop() # Detener si hay error
     elif not active_agents_data:
-        st.warning("⚠️ No hay agentes definidos como 'activos' en 'Gestión de Agentes IA'.")
+        st.warning("⚠️ No tienes acceso a ningún agente activo.")
+        st.info("Contacta a un administrador para obtener permisos de acceso a agentes.")
     else:
         # --- Mostrar Tarjetas ---
-        st.subheader(f"Selecciona un Agente ({len(active_agents_data)} activo/s):")
+        current_role = st.session_state.get('role_name', 'N/A')
+        st.subheader(f"Agentes Disponibles para tu Rol ({current_role})")
+        st.caption(f"Mostrando {len(active_agents_data)} agente(s) accesible(s)")
         num_cols = 3; cols = st.columns(num_cols)
 
         # Iterar sobre la LISTA DE DICCIONARIOS
@@ -113,9 +122,14 @@ def show_agent_list_and_chat():
              agent_name = agent_dict.get('name', 'Sin Nombre')
              agent_desc = agent_dict.get('description', '')
              agent_model = agent_dict.get('model_name', 'N/A')
-             agent_chat_url = agent_dict.get('n8n_chat_url') # Obtener URL del dict
+             agent_chat_url = agent_dict.get('n8n_chat_url')
+             
+             # Información de acceso RBAC
+             can_interact = agent_dict.get('can_interact', False)
+             can_view = agent_dict.get('can_view', False)
+             access_display = agent_dict.get('access_display', '🔴 Sin Acceso')
 
-             if not agent_id: continue # Saltar si falta ID
+             if not agent_id or not can_view: continue # Saltar si no tiene acceso de vista
 
              col_index = idx % num_cols
              with cols[col_index]:
@@ -124,11 +138,21 @@ def show_agent_list_and_chat():
                        st.markdown(f"##### {'✅ ' if is_selected else '🤖 '} {agent_name}")
                        st.caption(f"Modelo: {agent_model}")
                        st.markdown(f"<small>{agent_desc[:100]}{'...' if len(agent_desc)>100 else ''}</small>", unsafe_allow_html=True)
+                       
+                       # Mostrar nivel de acceso
+                       st.markdown(f"**Acceso:** {access_display}")
                        st.markdown('<hr style="margin: 0.5rem 0;">', unsafe_allow_html=True)
 
                        button_type = "primary" if is_selected else "secondary"
-                       chat_button_disabled = not agent_chat_url # Deshabilitar si no hay URL
-                       chat_button_help = "Chatear" if not chat_button_disabled else "URL Chat no configurada"
+                       # Deshabilitar si no puede interactuar o no hay URL
+                       chat_button_disabled = not can_interact or not agent_chat_url
+                       
+                       if not can_interact:
+                           chat_button_help = "Solo tienes acceso de vista a este agente"
+                       elif not agent_chat_url:
+                           chat_button_help = "URL Chat no configurada"
+                       else:
+                           chat_button_help = "Iniciar conversación con este agente"
 
                        if st.button("💬 Chatear Ahora", key=f"chat_btn_{agent_id}",
                                     width='stretch', type=button_type,

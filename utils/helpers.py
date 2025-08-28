@@ -27,6 +27,7 @@ PAGE_PERMISSION_MAP = {
     "Roles": "pages/07_Roles.py",
     "Configuración": "pages/08_Configuracion.py",
     "Mi Perfil": "pages/09_Mi_Perfil.py",
+    "Control de Acceso": "pages/10_Control_Acceso_Agentes.py",
 }
 
 # --- NUEVA FUNCIÓN VITAL PARA RESTAURAR LA SESIÓN ---

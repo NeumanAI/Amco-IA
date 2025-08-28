@@ -8,10 +8,12 @@ import pytz
 import uuid
 import time
 from sqlalchemy.orm import joinedload
-from typing import Optional, Dict, Any, Tuple, Set # Añadir Set
+from typing import Optional, Dict, Any, Tuple, Set, List # Añadir Set
 
 # Importar desde los nuevos módulos
-from database.database import get_db_session
+from database.database import (
+    get_db_session, get_user_accessible_agents, check_user_agent_access
+)
 from database.models import User, Role
 from utils.config import get_configuration
 from utils.styles import get_login_page_style
@@ -285,3 +287,131 @@ def requires_role(allowed_roles):
                  st.stop()
          return wrapper
      return decorator
+
+# --- FUNCIONES PARA CONTROL DE ACCESO A AGENTES ---
+
+def get_current_user_accessible_agents(access_level: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Obtiene los agentes accesibles para el usuario actual.
+    
+    Args:
+        access_level: Nivel de acceso específico ('read_only', 'full_access')
+    
+    Returns:
+        List[Dict]: Lista de agentes accesibles con información de permisos
+    """
+    user_id = st.session_state.get('user_id')
+    if not user_id:
+        log.warning("No user_id in session for agent access check")
+        return []
+    
+    try:
+        accessible_agents = get_user_accessible_agents(user_id, access_level)
+        log.info(f"User {user_id} has access to {len(accessible_agents)} agents")
+        return accessible_agents
+    except Exception as e:
+        log.error(f"Error getting accessible agents for user {user_id}: {e}", exc_info=True)
+        return []
+
+def check_current_user_agent_access(agent_id: int) -> Dict[str, Any]:
+    """
+    Verifica si el usuario actual puede acceder a un agente específico.
+    
+    Args:
+        agent_id: ID del agente a verificar
+    
+    Returns:
+        Dict: Información de acceso {'can_view': bool, 'can_interact': bool, 'access_level': str}
+    """
+    user_id = st.session_state.get('user_id')
+    if not user_id:
+        log.warning("No user_id in session for agent access check")
+        return {'can_view': False, 'can_interact': False, 'access_level': 'no_access'}
+    
+    try:
+        access_info = check_user_agent_access(user_id, agent_id)
+        log.debug(f"User {user_id} access to agent {agent_id}: {access_info}")
+        return access_info
+    except Exception as e:
+        log.error(f"Error checking agent access for user {user_id}, agent {agent_id}: {e}", exc_info=True)
+        return {'can_view': False, 'can_interact': False, 'access_level': 'no_access'}
+
+def requires_agent_access(agent_id: int, required_access: str = 'read_only'):
+    """
+    Decorador que verifica si el usuario tiene acceso a un agente específico.
+    
+    Args:
+        agent_id: ID del agente requerido
+        required_access: Tipo de acceso requerido ('read_only' o 'full_access')
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            # Verificar autenticación primero
+            if not check_authentication():
+                show_login_page()
+                st.stop()
+            
+            # Verificar acceso al agente
+            access_info = check_current_user_agent_access(agent_id)
+            
+            if required_access == 'full_access' and not access_info['can_interact']:
+                st.title("🚫 Acceso Denegado al Agente")
+                st.error("No tienes permisos para interactuar con este agente.")
+                st.info("Contacta a un administrador si necesitas acceso.")
+                st.stop()
+            elif required_access == 'read_only' and not access_info['can_view']:
+                st.title("🚫 Agente No Accesible")
+                st.error("Este agente no está disponible para tu rol.")
+                st.info("Contacta a un administrador si necesitas acceso.")
+                st.stop()
+            
+            # Si el acceso es válido, ejecutar la función
+            try:
+                update_last_activity()
+                return func(*args, **kwargs)
+            except Exception as e:
+                log.error(f"Error in @requires_agent_access for agent {agent_id}: {e}", exc_info=True)
+                st.error("Error inesperado al acceder al agente.")
+                st.stop()
+        return wrapper
+    return decorator
+
+def filter_agents_by_user_access(agents: List[Dict[str, Any]], access_level: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Filtra una lista de agentes según el acceso del usuario actual.
+    
+    Args:
+        agents: Lista de agentes a filtrar
+        access_level: Nivel de acceso requerido (None para cualquier acceso)
+    
+    Returns:
+        List[Dict]: Lista filtrada de agentes accesibles
+    """
+    user_id = st.session_state.get('user_id')
+    if not user_id:
+        return []
+    
+    accessible_agents = []
+    
+    for agent in agents:
+        agent_id = agent.get('id')
+        if not agent_id:
+            continue
+        
+        access_info = check_current_user_agent_access(agent_id)
+        
+        # Verificar si cumple con el nivel de acceso requerido
+        if access_level == 'full_access' and not access_info['can_interact']:
+            continue
+        elif access_level == 'read_only' and not access_info['can_view']:
+            continue
+        elif not access_level and not access_info['can_view']:
+            continue
+        
+        # Añadir información de acceso al agente
+        agent_with_access = agent.copy()
+        agent_with_access.update(access_info)
+        accessible_agents.append(agent_with_access)
+    
+    log.info(f"Filtered {len(agents)} agents to {len(accessible_agents)} accessible agents for user {user_id}")
+    return accessible_agents

@@ -28,7 +28,7 @@ PAGE_PERMISSION = "Roles"
 ALL_PERMISSIONS = sorted([
     "Agentes IA", "Gestión de agentes IA", "Historial de Conversaciones",
     "Análisis de Consultas", "Monitoreo", "Gestión de Usuarios", "Roles",
-    "Configuración", "Mi Perfil"])
+    "Configuración", "Mi Perfil", "Control de Acceso"])
 
 # --- Funciones Auxiliares ---
 # MODIFICADA: Carga datos específicos, no objetos Role completos para la lista principal
@@ -134,7 +134,7 @@ def render_role_form_content(mode: str, all_permissions: List[str], is_superadmi
         st.markdown("* Obligatorio."); name = st.text_input("Nombre Rol *", value=d_name, disabled=is_edit); description = st.text_area("Descripción", value=d_desc)
         st.markdown("---"); st.subheader("Permisos *"); sel_perms = set(); c1,c2,c3=st.columns(3); cols=[c1,c2,c3]; idx=0
         for perm in all_permissions:
-            disabled = is_super_role_being_edited or (perm in ["Configuración", "Roles"] and not is_superadmin_calling)
+            disabled = is_super_role_being_edited or (perm in ["Configuración", "Roles", "Control de Acceso"] and not is_superadmin_calling)
             checked = perm in d_perms or is_super_role_being_edited
             with cols[idx % 3]:
                 if st.checkbox(perm, value=checked, disabled=disabled, key=f"{mode}_perm_{perm}"): sel_perms.add(perm)
