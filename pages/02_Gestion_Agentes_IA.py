@@ -9,8 +9,14 @@ from typing import Optional, List, Tuple, Dict, Any
 
 # Importar dependencias locales
 from auth.auth import requires_permission
-from database.database import get_db_session
-from database.models import Agent, LanguageModelOption, SkillOption, PersonalityOption, GoalOption
+from database.database import (
+    get_db_session, get_role_agent_access_matrix, set_role_agent_access,
+    get_agents_for_role
+)
+from database.models import (
+    Agent, LanguageModelOption, SkillOption, PersonalityOption, GoalOption,
+    Role, RoleAgentAccess
+)
 from utils.config import get_configuration
 import pytz
 import logging
@@ -39,6 +45,71 @@ def format_json_list(json_string: Optional[str]) -> str:
     try: data = json.loads(json_string); return ", ".join(str(item).strip() for item in data if item and str(item).strip()) if isinstance(data, list) else "[No Lista JSON]"
     except: return "[JSON Inválido]"
 
+def get_agent_role_access(agent_id: int) -> Dict[str, str]:
+    """
+    Obtiene los roles que tienen acceso a un agente específico.
+    
+    Args:
+        agent_id: ID del agente
+    
+    Returns:
+        Dict: Mapeo de role_name -> access_level
+    """
+    role_access = {}
+    try:
+        with get_db_session() as db:
+            # Obtener todos los roles y sus accesos a este agente
+            query = db.query(
+                Role.name,
+                RoleAgentAccess.access_level
+            ).outerjoin(
+                RoleAgentAccess, 
+                (Role.id == RoleAgentAccess.role_id) & (RoleAgentAccess.agent_id == agent_id)
+            ).order_by(Role.name).all()
+            
+            for role_name, access_level in query:
+                # Si es SuperAdministrador, siempre tiene acceso completo
+                if role_name and role_name.lower() == 'superadministrador':
+                    role_access[role_name] = 'full_access'
+                else:
+                    role_access[role_name] = access_level or 'no_access'
+    
+    except Exception as e:
+        log.error(f"Error getting agent role access for agent {agent_id}: {e}", exc_info=True)
+    
+    return role_access
+
+def format_agent_roles_display(role_access: Dict[str, str]) -> str:
+    """
+    Formatea la información de roles para mostrar en la interfaz.
+    
+    Args:
+        role_access: Mapeo de role_name -> access_level
+    
+    Returns:
+        str: Texto formateado para mostrar
+    """
+    if not role_access:
+        return "Sin accesos configurados"
+    
+    access_icons = {
+        'full_access': '🟢',
+        'read_only': '🟡', 
+        'no_access': '🔴'
+    }
+    
+    formatted_roles = []
+    for role_name, access_level in role_access.items():
+        if access_level and access_level != 'no_access':
+            icon = access_icons.get(access_level, '❓')
+            access_text = {
+                'full_access': 'Completo',
+                'read_only': 'Solo Vista'
+            }.get(access_level, access_level)
+            formatted_roles.append(f"{icon} {role_name} ({access_text})")
+    
+    return "; ".join(formatted_roles) if formatted_roles else "Sin accesos activos"
+
 def load_local_agents_data() -> Tuple[List[Dict[str, Any]], List[Tuple[str, int]], Optional[Exception], Optional[str]]:
     agents_data: List[Dict[str, Any]] = []; agent_options: List[Tuple[str, int]] = []
     error: Optional[Exception] = None; error_message: Optional[str] = None
@@ -51,12 +122,18 @@ def load_local_agents_data() -> Tuple[List[Dict[str, Any]], List[Tuple[str, int]
                 created = agent.created_at.astimezone(colombia_tz).strftime('%Y-%m-%d %H:%M') if agent.created_at else 'N/A'
                 updated = agent.updated_at.astimezone(colombia_tz).strftime('%Y-%m-%d %H:%M') if agent.updated_at else 'N/A'
                 icon = "🟢" if agent.status == "active" else "🔴"
+                
+                # Obtener información de roles para este agente
+                role_access = get_agent_role_access(agent.id)
+                roles_display = format_agent_roles_display(role_access)
+                
                 agents_data.append({
                     "ID": agent.id, "Nombre": agent.name, "Descripción": agent.description or "",
                     "Modelo": agent.model_name or "N/A", "Habilidades": format_json_list(agent.skills),
                     "Objetivos": format_json_list(agent.goals), "Personalidad": format_json_list(agent.personality),
                     "URL Chat N8N": agent.n8n_chat_url or "No", "URL Detalles N8N": agent.n8n_details_url or "No",
-                    "Estado": f"{icon} {agent.status.capitalize()}", "Creado": created, "Actualizado": updated,})
+                    "Estado": f"{icon} {agent.status.capitalize()}", "Roles con Acceso": roles_display,
+                    "Creado": created, "Actualizado": updated,})
                 agent_options.append((f"{agent.name} (ID: {agent.id})", agent.id))
     except OperationalError as oe: log.error(f"[GA] OpError: {oe}",exc_info=True); error=oe; error_message=f"Error DB: {oe}"
     except Exception as e: log.error(f"[GA] Generic error: {e}",exc_info=True); error=e; error_message=f"Error: {e}"
@@ -79,6 +156,147 @@ def edit_agent_dialog(agent_id: int):
     except Exception as e:
          st.error(f"Error cargando: {e}"); log.error(f"Fail load agent {agent_id}", exc_info=True)
          if st.button("Cerrar"): st.session_state.agent_action=None; st.session_state.editing_agent_id=None; st.rerun()
+
+@st.dialog("Gestionar Roles del Agente", width="large")
+def manage_agent_roles_dialog(agent_id: int):
+    """Diálogo para gestionar qué roles tienen acceso a un agente específico."""
+    log.info(f"Render manage roles dialog for agent ID: {agent_id}")
+    
+    try:
+        with get_db_session() as db:
+            # Obtener información del agente
+            agent = db.query(Agent).filter(Agent.id == agent_id).first()
+            if not agent:
+                st.error(f"Agente ID {agent_id} no encontrado.")
+                time.sleep(2)
+                st.session_state.agent_action = None
+                st.session_state.managing_roles_agent_id = None
+                st.rerun()
+                return
+            
+            # Obtener todos los roles disponibles
+            all_roles = db.query(Role).order_by(Role.name).all()
+            if not all_roles:
+                st.warning("No hay roles configurados en el sistema.")
+                return
+        
+        st.subheader(f"🔐 Gestionar Accesos: {agent.name}")
+        st.caption(f"Configura qué roles pueden acceder al agente ID: {agent_id}")
+        
+        # Obtener configuración actual de accesos
+        current_access = get_agent_role_access(agent_id)
+        
+        st.markdown("### Configuración de Accesos por Rol")
+        
+        # Crear formulario para cada rol
+        with st.form(key=f"agent_roles_form_{agent_id}"):
+            changes_made = {}
+            
+            for role in all_roles:
+                role_name = role.name
+                current_level = current_access.get(role_name, 'no_access')
+                
+                # Para SuperAdministrador, siempre acceso completo y deshabilitado
+                is_super = role_name.lower() == 'superadministrador'
+                if is_super:
+                    st.markdown(f"**🔒 {role_name}**: Acceso Completo (No modificable)")
+                    continue
+                
+                # Selector de nivel de acceso para otros roles
+                col1, col2 = st.columns([1, 2])
+                
+                with col1:
+                    st.markdown(f"**{role_name}:**")
+                
+                with col2:
+                    access_options = ['no_access', 'read_only', 'full_access']
+                    access_labels = {
+                        'no_access': '🚫 Sin Acceso',
+                        'read_only': '👁️ Solo Vista', 
+                        'full_access': '✅ Acceso Completo'
+                    }
+                    
+                    current_index = access_options.index(current_level) if current_level in access_options else 0
+                    
+                    new_access = st.selectbox(
+                        label="",
+                        options=access_options,
+                        index=current_index,
+                        format_func=lambda x: access_labels[x],
+                        key=f"role_access_{role.id}_{agent_id}",
+                        label_visibility="collapsed"
+                    )
+                    
+                    if new_access != current_level:
+                        changes_made[role.id] = new_access
+            
+            st.markdown("---")
+            
+            # Botones de acción
+            col1, col2, col3 = st.columns([1, 1, 2])
+            
+            with col1:
+                submitted = st.form_submit_button("💾 Guardar Cambios", type="primary")
+            
+            with col2:
+                if st.form_submit_button("❌ Cancelar"):
+                    st.session_state.agent_action = None
+                    st.session_state.managing_roles_agent_id = None
+                    st.rerun()
+            
+            with col3:
+                if changes_made:
+                    st.caption(f"⚠️ {len(changes_made)} cambio(s) pendiente(s)")
+            
+            if submitted:
+                if changes_made:
+                    success_count = 0
+                    error_count = 0
+                    
+                    for role_id, new_access_level in changes_made.items():
+                        if set_role_agent_access(role_id, agent_id, new_access_level):
+                            success_count += 1
+                        else:
+                            error_count += 1
+                    
+                    if success_count > 0:
+                        st.success(f"✅ Se guardaron {success_count} cambios exitosamente.")
+                    
+                    if error_count > 0:
+                        st.error(f"❌ {error_count} cambios fallaron al guardarse.")
+                    
+                    time.sleep(1.5)
+                    st.session_state.agent_action = None
+                    st.session_state.managing_roles_agent_id = None
+                    st.rerun()
+                else:
+                    st.info("No hay cambios para guardar.")
+        
+        # Mostrar resumen actual
+        st.markdown("### 📊 Resumen Actual de Accesos")
+        if current_access:
+            access_summary = []
+            for role_name, access_level in current_access.items():
+                if access_level and access_level != 'no_access':
+                    icon = {'full_access': '🟢', 'read_only': '🟡'}.get(access_level, '❓')
+                    text = {'full_access': 'Completo', 'read_only': 'Solo Vista'}.get(access_level, access_level)
+                    access_summary.append(f"{icon} **{role_name}**: {text}")
+            
+            if access_summary:
+                for item in access_summary:
+                    st.markdown(f"- {item}")
+            else:
+                st.info("Este agente no tiene accesos configurados (excepto SuperAdministrador).")
+        else:
+            st.info("No se pudo cargar la información de accesos.")
+            
+    except Exception as e:
+        st.error(f"Error gestionando roles del agente: {e}")
+        log.error(f"Error in manage_agent_roles_dialog for agent {agent_id}: {e}", exc_info=True)
+        if st.button("Cerrar"):
+            st.session_state.agent_action = None
+            st.session_state.managing_roles_agent_id = None
+            st.rerun()
 
 @st.dialog("Confirmar Eliminación")
 def delete_agent_dialog(agent_id: int):
@@ -191,31 +409,60 @@ def render_agent_form_content(mode: str, agent_data: Optional[Dict[str, Any]] = 
 # --- Página Principal ---
 @requires_permission(PAGE_PERMISSION)
 def show_agent_management_page():
-    st.title("🛠️ Gestión Agentes (Local)"); st.caption("Crear, editar, eliminar.")
+    st.title("🛠️ Gestión Agentes (Local)")
+    st.caption("Crear, editar, eliminar y gestionar accesos por roles.")
+    
+    # Información sobre la nueva funcionalidad
+    with st.expander("ℹ️ Información sobre Control de Acceso", expanded=False):
+        st.markdown("""
+        ### 🔐 Control de Acceso por Roles
+        
+        Cada agente puede tener diferentes niveles de acceso según el rol del usuario:
+        
+        - **🟢 Acceso Completo**: Puede ver e interactuar con el agente
+        - **🟡 Solo Vista**: Puede ver el agente pero no chatear con él  
+        - **🔴 Sin Acceso**: El agente no es visible para este rol
+        
+        **Nota**: Los usuarios con rol 'SuperAdministrador' siempre tienen acceso completo a todos los agentes.
+        
+        ### 🎯 Cómo Gestionar Accesos
+        
+        1. Selecciona un agente de la tabla
+        2. Haz clic en el botón **🔐** para gestionar roles
+        3. Configura el nivel de acceso para cada rol
+        4. Guarda los cambios
+        
+        Los cambios se aplicarán inmediatamente para todos los usuarios.
+        """)
+    
+    st.divider()
     try:
         agents_data, agent_options, error_load, error_message = load_local_agents_data()
         if st.button("🔄 Refrescar"): st.rerun()
         if error_load: st.error(error_message or "Error."); st.warning("Verifica BD/migraciones."); st.stop()
-        if agents_data: st.dataframe(pd.DataFrame(agents_data), key='agent_df', width='stretch', hide_index=True, column_config={ "ID": st.column_config.NumberColumn(width="small"), "Estado": st.column_config.TextColumn(width="small"), "Habilidades": st.column_config.TextColumn("Habilidades"), "Creado": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"), "Actualizado": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),})
+        if agents_data: st.dataframe(pd.DataFrame(agents_data), key='agent_df', width='stretch', hide_index=True, column_config={ "ID": st.column_config.NumberColumn(width="small"), "Estado": st.column_config.TextColumn(width="small"), "Habilidades": st.column_config.TextColumn("Habilidades"), "Roles con Acceso": st.column_config.TextColumn("Roles con Acceso", width="large"), "Creado": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"), "Actualizado": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),})
         else: st.info("No hay agentes.")
-        st.divider(); st.subheader("Acciones"); c1,c2,c3=st.columns([1.5,3,1.5])
+        st.divider(); st.subheader("Acciones"); c1,c2,c3=st.columns([1.5,2.5,2])
         with c1:
-            if st.button("➕ Crear", width='stretch'): st.session_state.agent_action='create'; st.session_state.editing_agent_id=None; st.session_state.deleting_agent_id=None
+            if st.button("➕ Crear", width='stretch'): st.session_state.agent_action='create'; st.session_state.editing_agent_id=None; st.session_state.deleting_agent_id=None; st.session_state.managing_roles_agent_id=None
         with c2:
             opts_map={l:i for l,i in agent_options}; opts_disp={"":"Seleccione..."}; opts_disp.update(opts_map)
             sel_lbl=st.selectbox("Sel:", options=list(opts_disp.keys()), index=0, label_visibility="collapsed", key="agent_select_crud")
             st.session_state.selected_agent_id_for_crud = opts_disp.get(sel_lbl)
         with c3:
-             ce,cd=st.columns(2); cur_sel=st.session_state.get("selected_agent_id_for_crud")
+             ce,cr,cd=st.columns(3); cur_sel=st.session_state.get("selected_agent_id_for_crud")
              with ce:
-                  if st.button("✏️", key="edit_btn", help="Editar", width='stretch', disabled=not cur_sel): st.session_state.agent_action='edit'; st.session_state.editing_agent_id=cur_sel; st.session_state.deleting_agent_id=None
+                  if st.button("✏️", key="edit_btn", help="Editar", width='stretch', disabled=not cur_sel): st.session_state.agent_action='edit'; st.session_state.editing_agent_id=cur_sel; st.session_state.deleting_agent_id=None; st.session_state.managing_roles_agent_id=None
+             with cr:
+                  if st.button("🔐", key="roles_btn", help="Gestionar Roles", width='stretch', disabled=not cur_sel): st.session_state.agent_action='manage_roles'; st.session_state.managing_roles_agent_id=cur_sel; st.session_state.editing_agent_id=None; st.session_state.deleting_agent_id=None
              with cd:
-                  if st.button("🗑️", key="del_btn", help="Eliminar", width='stretch', disabled=not cur_sel): st.session_state.agent_action='delete'; st.session_state.deleting_agent_id=cur_sel; st.session_state.editing_agent_id=None
-        action=st.session_state.get('agent_action'); edit_id=st.session_state.get('editing_agent_id'); del_id=st.session_state.get('deleting_agent_id')
-        log.debug(f"Dialog check: act={action}, ed={edit_id}, del={del_id}")
+                  if st.button("🗑️", key="del_btn", help="Eliminar", width='stretch', disabled=not cur_sel): st.session_state.agent_action='delete'; st.session_state.deleting_agent_id=cur_sel; st.session_state.editing_agent_id=None; st.session_state.managing_roles_agent_id=None
+        action=st.session_state.get('agent_action'); edit_id=st.session_state.get('editing_agent_id'); del_id=st.session_state.get('deleting_agent_id'); roles_id=st.session_state.get('managing_roles_agent_id')
+        log.debug(f"Dialog check: act={action}, ed={edit_id}, del={del_id}, roles={roles_id}")
         if action=='create': create_agent_dialog()
         elif action=='edit' and edit_id is not None: edit_agent_dialog(agent_id=edit_id) # Check ID
         elif action=='delete' and del_id is not None: delete_agent_dialog(agent_id=del_id) # Check ID
+        elif action=='manage_roles' and roles_id is not None: manage_agent_roles_dialog(agent_id=roles_id) # Check ID
     except Exception as page_e: log.error(f"Error page: {page_e}", exc_info=True); st.error(f"Error: {page_e}")
 
 # --- PASO 2: SIMPLIFICAR EL BLOQUE DE EJECUCIÓN ---
