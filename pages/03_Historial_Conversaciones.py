@@ -3,6 +3,7 @@
 import streamlit as st
 from datetime import datetime
 import pytz
+import time
 
 from auth.auth import requires_permission
 from utils.helpers import render_sidebar, restore_session_from_cookie
@@ -48,6 +49,63 @@ def format_datetime(dt):
     except Exception as e:
         log.error(f"Error formatting datetime {dt}: {e}")
         return str(dt)
+
+def continue_conversation(session_id: str, agent_id: int, agent_name: str, conversation_title: str):
+    """
+    Carga una conversación existente en el chat activo para continuar la conversación.
+    
+    Args:
+        session_id: ID de la sesión de conversación
+        agent_id: ID del agente
+        agent_name: Nombre del agente
+        conversation_title: Título de la conversación
+    """
+    log.info(f"Loading conversation {session_id} to continue chat with agent {agent_name}")
+    
+    try:
+        # Cargar mensajes de la conversación
+        messages = get_conversation_messages(session_id)
+        
+        # Convertir mensajes al formato esperado por el chat
+        chat_messages = []
+        for msg in messages:
+            # Agregar mensaje del usuario
+            chat_messages.append({
+                "role": "user",
+                "content": msg['user_message']
+            })
+            
+            # Agregar respuesta del agente si existe
+            if msg['agent_response']:
+                chat_messages.append({
+                    "role": "assistant", 
+                    "content": msg['agent_response']
+                })
+        
+        # Obtener información del agente para el chat_url
+        from database.database import get_db_session
+        from database.models import Agent
+        
+        with get_db_session() as db:
+            agent = db.query(Agent).filter(Agent.id == agent_id).first()
+            agent_chat_url = agent.n8n_chat_url if agent else None
+        
+        # Configurar el estado del chat para continuar la conversación
+        st.session_state.update({
+            'chat_selected_agent_id': agent_id,
+            'chat_selected_agent_name': agent_name,
+            'chat_selected_agent_chat_url': agent_chat_url,
+            'chat_messages': chat_messages,
+            'chat_session_id': session_id,  # Usar el mismo session_id para continuar
+            'continuing_conversation': True,  # Flag para indicar que es una conversación continuada
+            'continued_conversation_title': conversation_title
+        })
+        
+        log.info(f"Successfully loaded {len(chat_messages)} messages for conversation continuation")
+        
+    except Exception as e:
+        log.error(f"Error loading conversation {session_id} for continuation: {e}", exc_info=True)
+        st.error("Error al cargar la conversación")
 
 def display_conversation_messages(session_id: str, conversation_title: str):
     """Muestra los mensajes de una conversación específica"""
@@ -121,8 +179,8 @@ def show_conversation_history_page() -> None:
                 
                 button_type = "primary" if is_selected else "secondary"
                 
-                # Layout: botón + menú de opciones
-                col_btn, col_menu = st.columns([4, 1])
+                # Layout: botón + botón continuar + menú de opciones
+                col_btn, col_continue, col_menu = st.columns([3, 1, 1])
                 
                 with col_btn:
                     if st.button(
@@ -139,6 +197,13 @@ def show_conversation_history_page() -> None:
                             del st.session_state[f'editing_title_{conv["session_id"]}']
                         st.rerun()
                 
+                with col_continue:
+                    if st.button("💬", key=f"quick_continue_{conv['session_id']}", help="Continuar conversación", width='stretch'):
+                        continue_conversation(conv['session_id'], conv['agent_id'], conv['agent_name'], conv['title'])
+                        st.success("Cargando...")
+                        time.sleep(0.5)
+                        st.switch_page("pages/01_Agentes_IA.py")
+                
                 with col_menu:
                     # Menú de opciones con popover
                     with st.popover("⋮", width='stretch'):
@@ -147,6 +212,14 @@ def show_conversation_history_page() -> None:
                         st.caption(f"💬 {conv['message_count']} mensajes")
                         
                         st.divider()
+                        
+                        # 🆕 Opción continuar chat
+                        if st.button("💬 Continuar Chat", key=f"continue_btn_{conv['session_id']}", width='stretch', type="primary"):
+                            # Cargar conversación en el chat activo
+                            continue_conversation(conv['session_id'], conv['agent_id'], conv['agent_name'], conv['title'])
+                            st.success(f"Continuando conversación: {conv['title'][:30]}...")
+                            time.sleep(1)  # Breve pausa para mostrar mensaje
+                            st.switch_page("pages/01_Agentes_IA.py")
                         
                         # Opción renombrar
                         if st.button("✏️ Renombrar", key=f"rename_btn_{conv['session_id']}", width='stretch'):
@@ -168,7 +241,7 @@ def show_conversation_history_page() -> None:
                                     st.rerun()
                                 else:
                                     st.error("Error al eliminar conversación")
-                            else:
+        else:
                                 # Pedir confirmación
                                 st.session_state[f'confirm_delete_{conv["session_id"]}'] = True
                                 st.rerun()

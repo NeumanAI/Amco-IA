@@ -76,7 +76,17 @@ def load_local_active_agents_data() -> Tuple[List[Dict[str, Any]], Optional[Exce
 # --- Página Principal ---
 @requires_permission(PAGE_PERMISSION)
 def show_agent_list_and_chat():
-    st.title("🤖 Agentes IA Disponibles")
+    # Breadcrumb navigation si estamos en una conversación continuada
+    is_continuing_conversation = st.session_state.get('continuing_conversation', False)
+    if is_continuing_conversation:
+        col_nav, col_title = st.columns([1, 3])
+        with col_nav:
+            if st.button("← Historial", key="back_to_history", help="Volver al historial de conversaciones"):
+                st.switch_page("pages/03_Historial_Conversaciones.py")
+        with col_title:
+            st.title("🤖 Agentes IA - Chat Continuo")
+    else:
+        st.title("🤖 Agentes IA Disponibles")
     st.caption("Selecciona un agente definido localmente para iniciar una conversación.")
     init_chat_page_state()
 
@@ -143,19 +153,46 @@ def show_agent_list_and_chat():
 
     st.divider()
 
-    # --- Sección de Chat (sin cambios) ---
+    # --- Sección de Chat (con soporte para conversaciones continuadas) ---
     selected_agent_id = st.session_state.get('chat_selected_agent_id')
     selected_agent_name = st.session_state.get('chat_selected_agent_name')
     selected_agent_chat_url = st.session_state.get('chat_selected_agent_chat_url')
+    is_continuing_conversation = st.session_state.get('continuing_conversation', False)
+    continued_conversation_title = st.session_state.get('continued_conversation_title', '')
 
     if selected_agent_id and selected_agent_chat_url:
-        st.subheader(f"Conversación con: {selected_agent_name}")
+        # Mostrar título del chat con información de conversación continuada
+        if is_continuing_conversation and continued_conversation_title:
+            st.subheader(f"💬 Continuando: {continued_conversation_title}")
+            col_info, col_action = st.columns([3, 1])
+            with col_info:
+                st.caption(f"🤖 Conversación con: **{selected_agent_name}** | 📜 Contexto cargado")
+            with col_action:
+                if st.button("🆕 Nueva Conversación", key="new_conversation_btn", help="Comenzar una nueva conversación"):
+                    # Limpiar el contexto de conversación continuada
+                    keys_to_clear = ['continuing_conversation', 'continued_conversation_title', 'chat_messages', 'chat_session_id']
+                    for key in keys_to_clear:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.session_state['chat_session_id'] = str(uuid.uuid4())
+                    st.rerun()
+        else:
+            st.subheader(f"Conversación con: {selected_agent_name}")
+            
         message_container = st.container(height=450, border=False)
         with message_container:
              chat_history = st.session_state.get('chat_messages', [])
-             if not chat_history: st.caption(f"Escribe tu primer mensaje...")
+             if not chat_history: 
+                 if is_continuing_conversation:
+                     st.info("🔄 Cargando contexto de conversación...")
+                 else:
+                     st.caption(f"Escribe tu primer mensaje...")
              else:
-                  for message in chat_history:
+                 # Mostrar indicador de conversación continuada al inicio
+                 if is_continuing_conversation and len(chat_history) > 0:
+                     st.info(f"📜 Mostrando contexto de conversación anterior ({len(chat_history)} mensajes)")
+                     
+                 for message in chat_history:
                        role=message.get("role","user"); content=str(message.get("content","")); avatar="🧑‍💻" if role=="user" else "🤖"
                        with st.chat_message(name=role, avatar=avatar): st.markdown(content)
         prompt = st.chat_input(f"Escribe a {selected_agent_name}...", key="chat_input_field")
@@ -180,6 +217,12 @@ def show_agent_list_and_chat():
                      log.info(f"✅ Conversation saved successfully for session {current_session_id}")
                  else:
                      log.warning(f"⚠️ Failed to save conversation for session {current_session_id}")
+                     
+                 # Limpiar flag de conversación continuada después del primer mensaje nuevo
+                 if is_continuing_conversation:
+                     st.session_state['continuing_conversation'] = False
+                     log.info("🔄 Cleared continuing conversation flag after new message")
+                     
              except Exception as save_error:
                  log.error(f"❌ Error saving conversation: {save_error}", exc_info=True)
              
