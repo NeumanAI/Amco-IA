@@ -1,3 +1,4 @@
+
 # --- pages/03_Historial_Conversaciones.py (REDISEÑADO - Interfaz similar a OpenAI) ---
 
 import streamlit as st
@@ -248,8 +249,8 @@ def show_conversation_history_page() -> None:
         return
     
     # Layout responsivo optimizado
-    # Detectar si es móvil basado en el ancho de pantalla (simulado)
-    is_mobile = st.session_state.get('is_mobile', False)
+    # Usar layout móvil (con tabs) como predeterminado - se ve mejor
+    is_mobile = st.session_state.get('is_mobile', True)
     
     if is_mobile:
         # Layout móvil: Stack vertical con tabs para mejor UX
@@ -264,7 +265,7 @@ def show_conversation_history_page() -> None:
                 selected_title = st.session_state.get('selected_conversation_title', 'Conversación')
                 display_conversation_messages(selected_session, selected_title)
             else:
-                st.info("📱 Selecciona una conversación en la pestaña 'Conversaciones'")
+                st.info("👆 Selecciona una conversación en la pestaña 'Conversaciones' para ver los mensajes")
     else:
         # Layout desktop: Sidebar optimizado + área de chat (más espacio para conversaciones)
         col_sidebar, col_chat = st.columns([1.3, 2.7], gap="medium")
@@ -283,12 +284,12 @@ def show_conversation_history_page() -> None:
                 # Estado vacío - interfaz limpia y funcional
                 st.info("👈 Selecciona una conversación para ver los mensajes")
                 
-                # Botón para alternar vista móvil (para testing)
+                # Botón para alternar vista (móvil es por defecto)
                 st.markdown("---")
                 col_mobile_toggle, col_space = st.columns([1, 2])
                 with col_mobile_toggle:
-                    current_mobile = st.session_state.get('is_mobile', False)
-                    if st.button(f"📱 {'Desktop' if current_mobile else 'Mobile'} Mode", help="Alternar vista para testing"):
+                    current_mobile = st.session_state.get('is_mobile', True)
+                    if st.button(f"📱 {'Vista Clásica' if current_mobile else 'Vista con Tabs'}", help="Alternar entre vista con tabs y vista clásica"):
                         st.session_state['is_mobile'] = not current_mobile
                         st.rerun()
 
