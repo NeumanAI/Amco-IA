@@ -30,42 +30,32 @@ PAGE_PERMISSION_MAP = {
     "Control de Acceso": "pages/10_Control_Acceso_Agentes.py",
 }
 
-# --- NUEVA FUNCIÓN VITAL PARA RESTAURAR LA SESIÓN ---
+# --- Enhanced Session Restoration with Security Middleware ---
 def restore_session_from_cookie():
     """
-    Comprueba si existe una cookie de sesión y restaura el estado de la sesión si existe
-    y el usuario no está ya autenticado en la ejecución actual.
-    Debe llamarse al principio de CADA script de página.
+    Enhanced session restoration using the new security middleware.
+    This function now uses the enhanced SessionManager for secure session handling.
     """
-    # Si la sesión ya está autenticada en esta ejecución, no hagas nada.
-    if st.session_state.get('authenticated', False):
-        return
-
-    cookie_data = get_session_cookie()
-    if cookie_data:
-        log.info("Intentando restaurar la sesión desde la cookie.")
-        try:
-            # Restaurar los datos del usuario desde la cookie
-            st.session_state['authenticated'] = cookie_data.get('authenticated', False)
-            st.session_state['username'] = cookie_data.get('username')
-            st.session_state['user_id'] = cookie_data.get('user_id')
-            st.session_state['role_name'] = cookie_data.get('role_name')
-            # Asegurarse de que los permisos se restauren como un conjunto (set)
-            st.session_state['permissions'] = set(cookie_data.get('permissions', []))
-            
-            # Actualizar la última actividad para prevenir un timeout inmediato
-            try:
-                tz_str = get_configuration('timezone', 'general', 'America/Bogota')
-                colombia_tz = pytz.timezone(tz_str)
-            except Exception:
-                colombia_tz = pytz.timezone('America/Bogota')
-            st.session_state['last_activity_time'] = datetime.now(colombia_tz)
-
-            log.info(f"Sesión para el usuario '{st.session_state.get('username')}' restaurada correctamente.")
-        except Exception as e:
-            log.error(f"Fallo al restaurar la sesión desde la cookie: {e}", exc_info=True)
-            # Limpiar el estado de sesión si la restauración falla para forzar un nuevo login
-            st.session_state.clear()
+    try:
+        # Import here to avoid circular imports
+        from auth.security_middleware import initialize_security_system
+        
+        # Initialize the enhanced security system
+        initialize_security_system()
+        
+        log.info("Enhanced session restoration completed")
+        
+    except Exception as e:
+        log.error(f"Error during enhanced session restoration: {e}", exc_info=True)
+        # Clear session state if restoration fails
+        st.session_state.clear()
+        st.session_state.update({
+            'authenticated': False,
+            'username': None,
+            'user_id': None,
+            'role_name': None,
+            'permissions': set()
+        })
 
 # --- Funciones existentes ---
 def is_valid_email(email: Optional[str]) -> bool:
@@ -79,65 +69,87 @@ def show_dev_placeholder(page_title: str):
     st.markdown("Las funcionalidades principales para esta área se implementarán próximamente.")
     st.info("Si tienes ideas o requisitos específicos para esta sección, por favor comunícalos.")
 
-# --- NUEVA FUNCIÓN PARA RENDERIZAR SIDEBAR ---
+# --- Enhanced Sidebar with Security Features ---
 def render_sidebar():
     """
-    Renderiza el contenido completo del sidebar, incluyendo logo,
-    enlaces de página filtrados por permisos, información de usuario
-    y botón de logout.
+    Enhanced sidebar with security monitoring and session management
     """
-    with st.sidebar:
-        # 1. Mostrar logo si está configurado (CON PARÁMETRO CORREGIDO)
-        logo_sidebar_url = get_configuration('logo_url', 'general', None)
-        if logo_sidebar_url:
-            st.image(logo_sidebar_url, width='stretch') # <-- CORRECCIÓN 3
-            st.divider()
+    try:
+        with st.sidebar:
+            # 1. Show logo if configured
+            logo_sidebar_url = get_configuration('logo_url', 'general', None)
+            if logo_sidebar_url:
+                st.image(logo_sidebar_url, width='stretch')
+                st.divider()
 
-        # 2. Definir la estructura del menú (secciones y páginas) - UI mejorada
-        SECTIONS = {
-            "AGENTES": [
-                "Agentes IA",
-                "Gestión de agentes IA", 
-                "Historial de Conversaciones",
-                # "Análisis de Consultas", # Oculto para UI limpia
-            ],
-            "ADMINISTRACIÓN": [
-                # "Monitoreo", # Oculto para UI limpia
-                "Gestión de Usuarios",
-                "Roles",
-                "Control de Acceso",
-                "Configuración",
-            ],
-            "USUARIO": [
-                "Mi Perfil",
-            ]
-        }
+            # 2. Security Status (NEW)
+            if st.session_state.get('authenticated', False):
+                username = st.session_state.get('username', 'N/A')
+                role_name = st.session_state.get('role_name', 'N/A')
+                
+                # Security indicator
+                st.success("🔐 **Sesión Segura**")
+                st.caption(f"👤 {username} | 🎭 {role_name}")
+                
+                # Session timeout warning (NEW)
+                try:
+                    from utils.session_ui import SessionUI
+                    SessionUI.show_session_timeout_warning()
+                except ImportError:
+                    pass  # Fallback if session_ui is not available
+                
+                st.divider()
 
-        # 3. Generar enlaces de página filtrados por permisos
-        user_permissions = st.session_state.get('permissions', set())
-        log.debug(f"Rendering sidebar for user '{st.session_state.get('username')}' with permissions: {user_permissions}")
+            # 3. Menu structure
+            SECTIONS = {
+                "AGENTES": [
+                    "Agentes IA",
+                    "Gestión de agentes IA", 
+                    "Historial de Conversaciones",
+                ],
+                "ADMINISTRACIÓN": [
+                    "Gestión de Usuarios",
+                    "Roles",
+                    "Control de Acceso",
+                    "Configuración",
+                ],
+                "USUARIO": [
+                    "Mi Perfil",
+                ]
+            }
 
-        for section_title, page_names in SECTIONS.items():
-            st.markdown(f"**{section_title}**")
-            for page_name in page_names:
-                if page_name in PAGE_PERMISSION_MAP:
-                    page_path = PAGE_PERMISSION_MAP[page_name]
-                    if page_name in user_permissions:
-                        st.page_link(page_path, label=page_name, icon=None)
-                        log.debug(f"  - Allowed: {page_name} (Path: {page_path}) under {section_title}")
+            # 4. Generate filtered page links
+            user_permissions = st.session_state.get('permissions', set())
+            log.debug(f"Rendering sidebar for user '{st.session_state.get('username')}' with permissions: {user_permissions}")
+
+            for section_title, page_names in SECTIONS.items():
+                st.markdown(f"**{section_title}**")
+                for page_name in page_names:
+                    if page_name in PAGE_PERMISSION_MAP:
+                        page_path = PAGE_PERMISSION_MAP[page_name]
+                        if page_name in user_permissions:
+                            st.page_link(page_path, label=page_name, icon=None)
+                            log.debug(f"  - Allowed: {page_name} (Path: {page_path}) under {section_title}")
+                        else:
+                            log.debug(f"  - Denied: {page_name} (Path: {page_path}) under {section_title} due to missing permission")
                     else:
-                        log.debug(f"  - Denied: {page_name} (Path: {page_path}) under {section_title} due to missing permission")
-                else:
-                    log.warning(f"  - Config Error: Page '{page_name}' in SECTIONS but not in PAGE_PERMISSION_MAP.")
+                        log.warning(f"  - Config Error: Page '{page_name}' in SECTIONS but not in PAGE_PERMISSION_MAP.")
 
-        st.markdown("---")
+            st.markdown("---")
 
-        # 4. Mostrar información del usuario logueado
-        st.markdown(f"👤 **Usuario:** {st.session_state.get('username', 'N/A')}")
-        st.markdown(f"🎭 **Rol:** {st.session_state.get('role_name', 'N/A')}")
+            # 5. User information (session details removed as auto-refresh is handled automatically)
+            # The session is automatically managed and refreshed in the background
 
-        st.markdown("---")
+            st.markdown("---")
 
-        # 6. Botón de Cerrar Sesión (usando la función logout importada)
-        if st.button("🚪 Cerrar Sesión", key="logout_sidebar_button", width='stretch', type="primary"):
-            logout()
+            # 6. Enhanced logout button
+            if st.button("🚪 Cerrar Sesión", key="logout_sidebar_button", width='stretch', type="primary"):
+                logout()
+                
+    except Exception as e:
+        log.error(f"Error rendering enhanced sidebar: {e}", exc_info=True)
+        # Fallback to basic sidebar
+        with st.sidebar:
+            st.error("Error en el sidebar. Usando versión básica.")
+            if st.button("🚪 Cerrar Sesión", key="fallback_logout"):
+                logout()

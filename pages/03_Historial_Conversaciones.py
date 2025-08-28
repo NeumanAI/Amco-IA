@@ -6,9 +6,10 @@ from datetime import datetime
 import pytz
 import time
 
-from auth.auth import requires_permission
+from auth.security_middleware import requires_permission
 from utils.helpers import render_sidebar, restore_session_from_cookie
 from utils.styles import apply_global_styles
+from utils.session_ui import render_session_monitor
 from database.database import (
     get_conversations_for_user, 
     get_conversation_messages, 
@@ -406,7 +407,8 @@ def render_desktop_conversation_list(conversations):
             if i < len(conversations) - 1:
                 st.markdown("<br>", unsafe_allow_html=True)
 
-# Aplicar estilos y renderizar
+# Enhanced rendering with security monitoring
 apply_global_styles()
 render_sidebar()
+render_session_monitor()  # Add session monitoring
 show_conversation_history_page()

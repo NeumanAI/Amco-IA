@@ -1,14 +1,23 @@
-# --- auth/auth.py (CORREGIDO - Redirección con st.switch_page) ---
+# --- auth/auth.py (ENHANCED - Integrated with Security Middleware) ---
 
 import streamlit as st
 import hashlib
+import bcrypt
 from datetime import datetime, timedelta
 import re
 import pytz
 import uuid
 import time
 from sqlalchemy.orm import joinedload
-from typing import Optional, Dict, Any, Tuple, Set, List # Añadir Set
+from typing import Optional, Dict, Any, Tuple, Set, List
+import logging
+
+# Enhanced security imports
+from auth.security_middleware import (
+    SessionManager, TokenManager, SecureStorage, SecurityConfig,
+    requires_authentication, requires_permission, requires_role,
+    initialize_security_system, get_session_timeout_info
+)
 
 # Importar desde los nuevos módulos
 from database.database import (
@@ -17,8 +26,6 @@ from database.database import (
 from database.models import User, Role
 from utils.config import get_configuration
 from utils.styles import get_login_page_style
-from utils.cookies import set_session_cookie, get_session_cookie, clear_session_cookie
-import logging # Añadir logging
 
 log = logging.getLogger(__name__)
 
@@ -30,28 +37,54 @@ except Exception as e:
     log.warning(f"Failed getting/setting timezone config: {e}. Using America/Bogota")
     colombia_tz = pytz.timezone('America/Bogota')
 
-# --- Funciones de Contraseña (Sin cambios) ---
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+# --- Enhanced Password Functions with bcrypt ---
+def hash_password(password: str) -> str:
+    """Hash password using bcrypt for enhanced security"""
+    try:
+        # Generate salt and hash password
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+        return hashed.decode('utf-8')
+    except Exception as e:
+        log.error(f"Error hashing password: {e}")
+        # Fallback to SHA256 for compatibility
+        return hashlib.sha256(password.encode()).hexdigest()
+
+def verify_password(password: str, hashed_password: str) -> bool:
+    """Verify password against hash using bcrypt"""
+    try:
+        # Try bcrypt first
+        if hashed_password.startswith('$2b$'):
+            return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+        else:
+            # Fallback to SHA256 for legacy passwords
+            return hashlib.sha256(password.encode()).hexdigest() == hashed_password
+    except Exception as e:
+        log.error(f"Error verifying password: {e}")
+        return False
 
 def get_security_config_values():
-    defaults = { 'password_min_length': '8', 'password_require_special': 'True', 'password_require_numbers': 'True', 'password_require_uppercase': 'True', 'session_timeout': '60' }
-    config = {}
+    """Get security configuration values - now uses SecurityConfig class"""
     try:
-        with get_db_session() as db:
-            for key in defaults: config[key] = get_configuration(key, category='security', default=defaults[key], db_session=db)
-    except Exception as e: log.error(f"Error reading security config: {e}"); config = defaults.copy()
-    try: # Conversión
-        config['password_min_length'] = max(4, int(config.get('password_min_length', defaults['password_min_length'])))
-        config['password_require_special'] = str(config.get('password_require_special', defaults['password_require_special'])).lower() == 'true'
-        config['password_require_numbers'] = str(config.get('password_require_numbers', defaults['password_require_numbers'])).lower() == 'true'
-        config['password_require_uppercase'] = str(config.get('password_require_uppercase', defaults['password_require_uppercase'])).lower() == 'true'
-        config['session_timeout'] = max(5, int(config.get('session_timeout', defaults['session_timeout'])))
-    except (ValueError, TypeError) as e:
-        log.error(f"Error converting security config: {e}. Reverting defaults.")
-        config = { k: defaults[k] for k in defaults }; config['password_min_length'] = max(4, int(defaults['password_min_length'])); config['session_timeout'] = max(5, int(defaults['session_timeout']))
-        for k in ['password_require_special', 'password_require_numbers', 'password_require_uppercase']: config[k] = defaults[k].lower() == 'true'
-    return config
+        password_reqs = SecurityConfig.get_password_requirements()
+        session_timeout = SecurityConfig.get_session_timeout()
+        
+        return {
+            'password_min_length': password_reqs['min_length'],
+            'password_require_special': password_reqs['require_special'],
+            'password_require_numbers': password_reqs['require_numbers'],
+            'password_require_uppercase': password_reqs['require_uppercase'],
+            'session_timeout': session_timeout
+        }
+    except Exception as e:
+        log.error(f"Error getting security config: {e}")
+        return {
+            'password_min_length': 8,
+            'password_require_special': True,
+            'password_require_numbers': True,
+            'password_require_uppercase': True,
+            'session_timeout': 30
+        }
 
 def validate_password(password, security_config=None):
     if not password: return False, "Contraseña vacía."
@@ -63,23 +96,26 @@ def validate_password(password, security_config=None):
     if req_upper and not any(c.isupper() for c in password): return False, "Requiere mayúscula."
     return True, "Válida."
 
-# --- Gestión de Estado de Sesión (Sin cambios) ---
+# --- Enhanced Session State Management ---
 def init_session_state():
-    now_with_tz = datetime.now(colombia_tz)
-    defaults = { 'authenticated': False, 'username': None, 'user_id': None, 'role_name': None, 'permissions': set(), 'last_activity_time': now_with_tz, 'user_action': None, 'editing_user_id': None, 'deleting_user_id': None, 'role_action': None, 'editing_role_name': None, 'deleting_role_name': None, 'agent_action': None, 'editing_agent_id': None, 'deleting_agent_id': None, 'selected_agent_id': None, 'selected_agent_name': None, 'chat_messages': [], 'current_chat_agent_id': None, 'chat_session_id': None, 'chat_selected_agent_chat_url': None, 'selected_agent_id_for_crud': None, 'selected_role_id_for_crud': None }
-    
-    # Check for existing session cookie
-    cookie_data = get_session_cookie()
-    if cookie_data:
-        # Restore session from cookie
-        for key in ['authenticated', 'username', 'user_id', 'role_name', 'permissions']:
-            if key in cookie_data:
-                st.session_state[key] = cookie_data[key]
-        if 'permissions' in cookie_data:
-            st.session_state['permissions'] = set(cookie_data['permissions'])
-        st.session_state['last_activity_time'] = now_with_tz
-    else:
-        # Initialize with defaults
+    """Initialize session state with enhanced security"""
+    try:
+        # Initialize the enhanced security system
+        initialize_security_system()
+        
+        now_with_tz = datetime.now(colombia_tz)
+        defaults = {
+            'authenticated': False, 'username': None, 'user_id': None, 'role_name': None, 
+            'permissions': set(), 'last_activity_time': now_with_tz, 'user_action': None, 
+            'editing_user_id': None, 'deleting_user_id': None, 'role_action': None, 
+            'editing_role_name': None, 'deleting_role_name': None, 'agent_action': None, 
+            'editing_agent_id': None, 'deleting_agent_id': None, 'selected_agent_id': None, 
+            'selected_agent_name': None, 'chat_messages': [], 'current_chat_agent_id': None, 
+            'chat_session_id': None, 'chat_selected_agent_chat_url': None, 
+            'selected_agent_id_for_crud': None, 'selected_role_id_for_crud': None
+        }
+        
+        # Initialize defaults if not already set
         for key, default_value in defaults.items():
             if key not in st.session_state:
                 st.session_state[key] = default_value
@@ -87,43 +123,80 @@ def init_session_state():
                 current_time_val = st.session_state.get(key)
                 if not isinstance(current_time_val, datetime) or current_time_val.tzinfo is None:
                     st.session_state[key] = now_with_tz
+                    
+        log.info("Session state initialized with enhanced security")
+        
+    except Exception as e:
+        log.error(f"Error initializing session state: {e}", exc_info=True)
 
-def update_last_activity(): st.session_state['last_activity_time'] = datetime.now(colombia_tz)
+def update_last_activity():
+    """Update last activity timestamp - now uses SessionManager"""
+    try:
+        SessionManager.update_activity()
+    except Exception as e:
+        log.error(f"Error updating activity: {e}")
+        st.session_state['last_activity_time'] = datetime.now(colombia_tz)
 
 def check_session_timeout():
-    if not st.session_state.get('authenticated', False): return False
+    """Check session timeout - now uses enhanced SessionManager"""
     try:
-        timeout_minutes = get_security_config_values()['session_timeout']; last_activity = st.session_state.get('last_activity_time')
-        if not isinstance(last_activity, datetime): update_last_activity(); return False
-        if last_activity.tzinfo is None:
-            try: last_activity = colombia_tz.localize(last_activity); st.session_state['last_activity_time'] = last_activity
-            except: update_last_activity(); return False
-        if datetime.now(colombia_tz) - last_activity > timedelta(minutes=timeout_minutes):
-            log.info(f"Session timeout user '{st.session_state.get('username')}'"); logout(silent=True); return True
-    except Exception as e: log.error(f"Error check session timeout: {e}")
-    return False
+        return not SessionManager.validate_session()
+    except Exception as e:
+        log.error(f"Error checking session timeout: {e}")
+        return True
 
 def check_authentication():
-    if st.session_state.get('authenticated', False):
-        if check_session_timeout(): return False # logout() ya hizo rerun
-        else: update_last_activity(); return True
-    return False
+    """Enhanced authentication check using SessionManager"""
+    try:
+        return SessionManager.validate_session()
+    except Exception as e:
+        log.error(f"Error checking authentication: {e}")
+        return False
 
-# --- Autenticación y Login (Sin cambios en authenticate_user) ---
-def authenticate_user(username, password) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
-    hashed_password = hash_password(password)
+# --- Enhanced Authentication with bcrypt ---
+def authenticate_user(username: str, password: str) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
+    """Enhanced user authentication with bcrypt password verification"""
     try:
         with get_db_session() as db:
             user = db.query(User).options(joinedload(User.role)).filter(User.username == username).first()
-            if not user: return False, None, "Usuario o contraseña incorrectos."
-            if user.password != hashed_password: return False, None, "Usuario o contraseña incorrectos."
-            if user.status != 'active': return False, None, f"Cuenta inactiva."
+            
+            if not user:
+                log.warning(f"Authentication attempt for non-existent user: {username}")
+                return False, None, "Usuario o contraseña incorrectos."
+            
+            # Enhanced password verification
+            if not verify_password(password, user.password):
+                log.warning(f"Failed password verification for user: {username}")
+                return False, None, "Usuario o contraseña incorrectos."
+            
+            if user.status != 'active':
+                log.warning(f"Authentication attempt for inactive user: {username}")
+                return False, None, "Cuenta inactiva."
+            
+            # Update last access
             user.last_access = datetime.now(colombia_tz)
-            perms = set(); role_name = "N/A"
-            if user.role: role_name = user.role.name; perms = set(p.strip() for p in (user.role.permissions or '').split(',') if p.strip())
-            user_info = {"user_id": user.id, "username": user.username, "email": user.email, "role_name": role_name, "permissions": perms }
-            log.info(f"User '{username}' authenticated."); return True, user_info, None
-    except Exception as e: log.error(f"DB error auth user {username}: {e}", exc_info=True); return False, None, "Error interno del servidor."
+            
+            # Get user permissions
+            perms = set()
+            role_name = "N/A"
+            if user.role:
+                role_name = user.role.name
+                perms = set(p.strip() for p in (user.role.permissions or '').split(',') if p.strip())
+            
+            user_info = {
+                "user_id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "role_name": role_name,
+                "permissions": perms
+            }
+            
+            log.info(f"User '{username}' authenticated successfully")
+            return True, user_info, None
+            
+    except Exception as e:
+        log.error(f"Database error during authentication for user {username}: {e}", exc_info=True)
+        return False, None, "Error interno del servidor."
 
 # --- Función de Login Page (MODIFICADA para usar st.switch_page) ---
 def show_login_page():
@@ -164,44 +237,54 @@ def show_login_page():
                         with st.spinner("Autenticando..."):
                             authenticated, user_info, error_msg = authenticate_user(username, password)
                         if authenticated:
-                            st.session_state['authenticated'] = True
-                            st.session_state['username'] = user_info['username']
-                            st.session_state['user_id'] = user_info['user_id']
-                            st.session_state['role_name'] = user_info['role_name']
-                            st.session_state['permissions'] = user_info['permissions']
-                            st.session_state['last_activity_time'] = datetime.now(colombia_tz)
-                            for key in ['user_action','role_action','agent_action']: st.session_state.pop(key, None) # Limpiar
-                            
-                            # Set session cookie
-                            cookie_data = {
-                                'authenticated': True,
-                                'username': user_info['username'],
-                                'user_id': user_info['user_id'],
-                                'role_name': user_info['role_name'],
-                                'permissions': list(user_info['permissions'])
-                            }
-                            set_session_cookie(cookie_data)
-                            
-                            st.success("Inicio de sesión exitoso...")
-                            time.sleep(0.5)
-                            try:
-                                st.switch_page("pages/01_Agentes_IA.py") # Cambiado a Agentes_IA
-                            except Exception as e_switch:
-                                log.error(f"Failed to switch page after login: {e_switch}")
-                                st.rerun()
-                        else: st.error(error_msg or "Usuario o contraseña incorrectos.")
+                            # Create secure session using SessionManager
+                            if SessionManager.create_session(user_info):
+                                # Clear any temporary state
+                                for key in ['user_action','role_action','agent_action']: 
+                                    st.session_state.pop(key, None)
+                                
+                                st.success("🔐 Inicio de sesión exitoso...")
+                                time.sleep(0.5)
+                                
+                                try:
+                                    st.switch_page("pages/01_Agentes_IA.py")
+                                except Exception as e_switch:
+                                    log.error(f"Failed to switch page after login: {e_switch}")
+                                    st.rerun()
+                            else:
+                                st.error("Error al crear la sesión segura. Intente nuevamente.")
+                        else: 
+                            st.error(error_msg or "Usuario o contraseña incorrectos.")
 
-# --- Logout (Sin cambios) ---
-def logout(silent=False, message="Sesión cerrada."):
-    log.info(f"Logging out user '{st.session_state.get('username', 'N/A')}'...")
-    keys_to_clear = list(st.session_state.keys());
-    for key in keys_to_clear:
-        try: del st.session_state[key]
-        except KeyError: pass
-    st.session_state.update({'authenticated':False,'username':None,'user_id':None,'role_name':None,'permissions':set()})
-    clear_session_cookie()  # Clear the session cookie
-    if not silent: st.success(message)
-    time.sleep(0.5); st.rerun()
+# --- Enhanced Logout with SessionManager ---
+def logout(silent: bool = False, message: str = "Sesión cerrada correctamente."):
+    """Enhanced logout using SessionManager"""
+    try:
+        username = st.session_state.get('username', 'N/A')
+        log.info(f"Logging out user '{username}'...")
+        
+        # Use SessionManager to securely destroy session
+        SessionManager.destroy_session(message if not silent else None)
+        
+        # Force page reload after logout
+        if not silent:
+            time.sleep(0.5)
+        st.rerun()
+        
+    except Exception as e:
+        log.error(f"Error during logout: {e}", exc_info=True)
+        # Fallback cleanup
+        st.session_state.clear()
+        st.session_state.update({
+            'authenticated': False,
+            'username': None,
+            'user_id': None,
+            'role_name': None,
+            'permissions': set()
+        })
+        if not silent:
+            st.success("Sesión cerrada.")
+        st.rerun()
 
 # --- Decoradores ---
 def requires_permission(permission_name):
@@ -236,13 +319,8 @@ def requires_permission(permission_name):
             # 4. Si todo está en orden, ejecutar la función de la página
             try:
                 update_last_activity()
-                # Opcional: Refrescar la cookie para extender su vida útil.
-                cookie_data = {
-                    'authenticated': True, 'username': st.session_state.get('username'),
-                    'user_id': st.session_state.get('user_id'), 'role_name': st.session_state.get('role_name'),
-                    'permissions': list(st.session_state.get('permissions', set()))
-                }
-                set_session_cookie(cookie_data)
+                # Session is automatically managed by SessionManager
+                # No need for manual cookie management
                 
                 return func(*args, **kwargs)
             except Exception as e:
@@ -272,14 +350,7 @@ def requires_role(allowed_roles):
 
              try:
                  update_last_activity()
-                 cookie_data_to_set = {
-                     'authenticated': True,
-                     'username': st.session_state.get('username'),
-                     'user_id': st.session_state.get('user_id'),
-                     'role_name': st.session_state.get('role_name'),
-                     'permissions': list(st.session_state.get('permissions', set()))
-                 }
-                 set_session_cookie(cookie_data_to_set)
+                 # Session management is handled by SessionManager
                  return func(*args, **kwargs)
              except Exception as e:
                  log.error(f"Error in @requires_role({allowed_roles}) for {func.__name__}: {e}", exc_info=True)
