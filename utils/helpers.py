@@ -82,23 +82,13 @@ def render_sidebar():
                 st.image(logo_sidebar_url, width='stretch')
                 st.divider()
 
-            # 2. Security Status (NEW)
+            # 2. Session timeout warning (minimal and subtle)
             if st.session_state.get('authenticated', False):
-                username = st.session_state.get('username', 'N/A')
-                role_name = st.session_state.get('role_name', 'N/A')
-                
-                # Security indicator
-                st.success("🔐 **Sesión Segura**")
-                st.caption(f"👤 {username} | 🎭 {role_name}")
-                
-                # Session timeout warning (NEW)
                 try:
                     from utils.session_ui import SessionUI
                     SessionUI.show_session_timeout_warning()
                 except ImportError:
                     pass  # Fallback if session_ui is not available
-                
-                st.divider()
 
             # 3. Menu structure
             SECTIONS = {
@@ -137,14 +127,17 @@ def render_sidebar():
 
             st.markdown("---")
 
-            # 5. User information (session details removed as auto-refresh is handled automatically)
-            # The session is automatically managed and refreshed in the background
-
-            st.markdown("---")
-
-            # 6. Enhanced logout button
-            if st.button("🚪 Cerrar Sesión", key="logout_sidebar_button", width='stretch', type="primary"):
-                logout()
+            # 5. User information and logout
+            if st.session_state.get('authenticated', False):
+                username = st.session_state.get('username', 'N/A')
+                role_name = st.session_state.get('role_name', 'N/A')
+                
+                # Show user info subtly
+                st.caption(f"👤 {username} • 🎭 {role_name}")
+                
+                # Logout button
+                if st.button("🚪 Cerrar Sesión", key="logout_sidebar_button", width='stretch', type="primary"):
+                    logout()
                 
     except Exception as e:
         log.error(f"Error rendering enhanced sidebar: {e}", exc_info=True)
