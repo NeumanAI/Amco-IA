@@ -305,42 +305,23 @@ def show_conversation_history_page() -> None:
             # Mostrar conversación seleccionada
             display_conversation_messages(selected_session, selected_title)
         else:
-            # Estado vacío - invitar a seleccionar conversación
+            # Estado vacío - interfaz limpia
             st.info("👈 Selecciona una conversación para ver los mensajes")
             
-            # Mostrar estadísticas generales
-            if conversations:
-                st.subheader("📊 Estadísticas Generales")
-                
-                total_conversations = len(conversations)
-                total_messages = sum(conv['message_count'] for conv in conversations)
-                agents_used = len(set(conv['agent_name'] for conv in conversations))
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric("Conversaciones", total_conversations)
-                
-                with col2:
-                    st.metric("Mensajes Totales", total_messages)
-                
-                with col3:
-                    st.metric("Agentes Usados", agents_used)
-                
-                st.subheader("🤖 Agentes Más Utilizados")
-                agent_usage = {}
-                for conv in conversations:
-                    agent_name = conv['agent_name']
-                    if agent_name in agent_usage:
-                        agent_usage[agent_name] += conv['message_count']
-                    else:
-                        agent_usage[agent_name] = conv['message_count']
-                
-                # Ordenar por uso
-                sorted_agents = sorted(agent_usage.items(), key=lambda x: x[1], reverse=True)
-                
-                for agent_name, message_count in sorted_agents[:5]:  # Top 5
-                    st.write(f"🤖 **{agent_name}**: {message_count} mensajes")
+            # Mensaje de bienvenida mejorado
+            st.markdown("---")
+            st.markdown("### 💬 Historial de Conversaciones")
+            st.markdown("""
+            Aquí puedes revisar todas tus conversaciones anteriores con los agentes IA.
+            
+            **Funcionalidades disponibles:**
+            - 📖 Ver mensajes completos de cualquier conversación
+            - ✏️ Renombrar conversaciones para mejor organización  
+            - 💬 Continuar conversaciones directamente desde aquí
+            - 🗑️ Eliminar conversaciones que ya no necesites
+            
+            Selecciona una conversación del panel izquierdo para comenzar.
+            """)
 
 # Aplicar estilos y renderizar
 apply_global_styles()
