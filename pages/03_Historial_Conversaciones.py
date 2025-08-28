@@ -241,7 +241,7 @@ def show_conversation_history_page() -> None:
                                     st.rerun()
                                 else:
                                     st.error("Error al eliminar conversación")
-        else:
+                            else:
                                 # Pedir confirmación
                                 st.session_state[f'confirm_delete_{conv["session_id"]}'] = True
                                 st.rerun()
