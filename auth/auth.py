@@ -155,7 +155,7 @@ def show_login_page():
                 username = st.text_input("Usuario", key="login_username", placeholder="Usuario", label_visibility="collapsed")
                 password = st.text_input("Contraseña", type="password", key="login_password", placeholder="Contraseña", label_visibility="collapsed")
                 st.markdown('<div style="height: 0.5rem;"></div>', unsafe_allow_html=True)
-                submitted = st.form_submit_button("Iniciar Sesión", use_container_width=True)
+                submitted = st.form_submit_button("Iniciar Sesión", width='stretch')
                 if submitted:
                     if not username or not password: st.error("Ingrese usuario y contraseña.")
                     else:

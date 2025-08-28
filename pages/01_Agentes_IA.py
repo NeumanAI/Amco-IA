@@ -121,7 +121,7 @@ def show_agent_list_and_chat():
                        chat_button_help = "Chatear" if not chat_button_disabled else "URL Chat no configurada"
 
                        if st.button("💬 Chatear Ahora", key=f"chat_btn_{agent_id}",
-                                    use_container_width=True, type=button_type,
+                                    width='stretch', type=button_type,
                                     disabled=chat_button_disabled, help=chat_button_help):
 
                             # Guardar ID, Nombre Y URL específica del diccionario en session_state

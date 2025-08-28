@@ -38,7 +38,7 @@ def crud_options_ui(option_model, model_name_singular: str, model_name_plural: s
             log.info(f"Loaded {len(options_data)} options for {model_name_plural}")
 
         if options_data:
-            st.dataframe(pd.DataFrame(options_data), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(options_data), width='stretch', hide_index=True)
         else:
             st.info(f"No hay {model_name_plural.lower()} definidos.")
 

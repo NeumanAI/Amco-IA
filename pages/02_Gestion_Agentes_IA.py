@@ -196,11 +196,11 @@ def show_agent_management_page():
         agents_data, agent_options, error_load, error_message = load_local_agents_data()
         if st.button("🔄 Refrescar"): st.rerun()
         if error_load: st.error(error_message or "Error."); st.warning("Verifica BD/migraciones."); st.stop()
-        if agents_data: st.dataframe(pd.DataFrame(agents_data), key='agent_df', use_container_width=True, hide_index=True, column_config={ "ID": st.column_config.NumberColumn(width="small"), "Estado": st.column_config.TextColumn(width="small"), "Habilidades": st.column_config.TextColumn("Habilidades"), "Creado": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"), "Actualizado": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),})
+        if agents_data: st.dataframe(pd.DataFrame(agents_data), key='agent_df', width='stretch', hide_index=True, column_config={ "ID": st.column_config.NumberColumn(width="small"), "Estado": st.column_config.TextColumn(width="small"), "Habilidades": st.column_config.TextColumn("Habilidades"), "Creado": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"), "Actualizado": st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),})
         else: st.info("No hay agentes.")
         st.divider(); st.subheader("Acciones"); c1,c2,c3=st.columns([1.5,3,1.5])
         with c1:
-            if st.button("➕ Crear", use_container_width=True): st.session_state.agent_action='create'; st.session_state.editing_agent_id=None; st.session_state.deleting_agent_id=None
+            if st.button("➕ Crear", width='stretch'): st.session_state.agent_action='create'; st.session_state.editing_agent_id=None; st.session_state.deleting_agent_id=None
         with c2:
             opts_map={l:i for l,i in agent_options}; opts_disp={"":"Seleccione..."}; opts_disp.update(opts_map)
             sel_lbl=st.selectbox("Sel:", options=list(opts_disp.keys()), index=0, label_visibility="collapsed", key="agent_select_crud")
@@ -208,9 +208,9 @@ def show_agent_management_page():
         with c3:
              ce,cd=st.columns(2); cur_sel=st.session_state.get("selected_agent_id_for_crud")
              with ce:
-                  if st.button("✏️", key="edit_btn", help="Editar", use_container_width=True, disabled=not cur_sel): st.session_state.agent_action='edit'; st.session_state.editing_agent_id=cur_sel; st.session_state.deleting_agent_id=None
+                  if st.button("✏️", key="edit_btn", help="Editar", width='stretch', disabled=not cur_sel): st.session_state.agent_action='edit'; st.session_state.editing_agent_id=cur_sel; st.session_state.deleting_agent_id=None
              with cd:
-                  if st.button("🗑️", key="del_btn", help="Eliminar", use_container_width=True, disabled=not cur_sel): st.session_state.agent_action='delete'; st.session_state.deleting_agent_id=cur_sel; st.session_state.editing_agent_id=None
+                  if st.button("🗑️", key="del_btn", help="Eliminar", width='stretch', disabled=not cur_sel): st.session_state.agent_action='delete'; st.session_state.deleting_agent_id=cur_sel; st.session_state.editing_agent_id=None
         action=st.session_state.get('agent_action'); edit_id=st.session_state.get('editing_agent_id'); del_id=st.session_state.get('deleting_agent_id')
         log.debug(f"Dialog check: act={action}, ed={edit_id}, del={del_id}")
         if action=='create': create_agent_dialog()

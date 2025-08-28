@@ -207,11 +207,11 @@ def show_user_management_page():
         users_data, user_options, error_load, error_message = load_user_data() # Usa nueva función
         if st.button("🔄 Refrescar"): st.rerun()
         if error_load: st.error(error_message or "Error."); st.stop()
-        if users_data: st.dataframe(pd.DataFrame(users_data), use_container_width=True, hide_index=True, column_config={"ID":st.column_config.NumberColumn(width="small"), "Estado":st.column_config.TextColumn(width="small"), "Creado":st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"), "Último Acceso":st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),})
+        if users_data: st.dataframe(pd.DataFrame(users_data), width='stretch', hide_index=True, column_config={"ID":st.column_config.NumberColumn(width="small"), "Estado":st.column_config.TextColumn(width="small"), "Creado":st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"), "Último Acceso":st.column_config.DatetimeColumn(format="YYYY-MM-DD HH:mm"),})
         else: st.info("No hay usuarios.")
         st.divider(); st.subheader("Acciones"); c1,c2,c3=st.columns([1.5,3,1.5])
         with c1:
-            if st.button("➕ Crear", use_container_width=True): st.session_state.user_action='create'; st.session_state.editing_user_id=None; st.session_state.deleting_user_id=None
+            if st.button("➕ Crear", width='stretch'): st.session_state.user_action='create'; st.session_state.editing_user_id=None; st.session_state.deleting_user_id=None
         with c2:
             # Usar user_options (lista de tuples) para crear mapa
             opts_map={l:i for l,i in user_options}; opts_disp={"":"Seleccione..."}; opts_disp.update(opts_map)
@@ -225,9 +225,9 @@ def show_user_management_page():
              if sel_user_name and (sel_user_name or '').lower()!='superadmin' and cur_sel!=cur_user_id: can_del=True
              elif sel_user_name: del_tooltip="No eliminable"
              with ce:
-                  if st.button("✏️", key="edit_btn", help="Editar", use_container_width=True, disabled=not cur_sel): st.session_state.user_action='edit'; st.session_state.editing_user_id=cur_sel; st.session_state.deleting_user_id=None
+                  if st.button("✏️", key="edit_btn", help="Editar", width='stretch', disabled=not cur_sel): st.session_state.user_action='edit'; st.session_state.editing_user_id=cur_sel; st.session_state.deleting_user_id=None
              with cd:
-                  if st.button("🗑️", key="del_btn", help=del_tooltip, use_container_width=True, disabled=not can_del): st.session_state.user_action='delete'; st.session_state.deleting_user_id=cur_sel; st.session_state.editing_user_id=None
+                  if st.button("🗑️", key="del_btn", help=del_tooltip, width='stretch', disabled=not can_del): st.session_state.user_action='delete'; st.session_state.deleting_user_id=cur_sel; st.session_state.editing_user_id=None
         action=st.session_state.get('user_action'); edit_id=st.session_state.get('editing_user_id'); del_id=st.session_state.get('deleting_user_id')
         log.debug(f"Dialog check GU: act={action}, ed={edit_id}, del={del_id}")
         if action=='create': create_user_dialog()

@@ -129,7 +129,7 @@ def show_conversation_history_page() -> None:
                         button_label,
                         key=f"conv_btn_{conv['session_id']}",
                         type=button_type,
-                        use_container_width=True,
+                        width='stretch',
                         help=f"Agente: {conv['agent_name']} | {conv['message_count']} mensajes"
                     ):
                         st.session_state['selected_conversation_session'] = conv['session_id']
@@ -141,7 +141,7 @@ def show_conversation_history_page() -> None:
                 
                 with col_menu:
                     # Menú de opciones con popover
-                    with st.popover("⋮", use_container_width=True):
+                    with st.popover("⋮", width='stretch'):
                         st.caption(f"**{conv['agent_name']}**")
                         st.caption(f"📅 {format_datetime(conv['last_activity'])}")
                         st.caption(f"💬 {conv['message_count']} mensajes")
@@ -149,12 +149,12 @@ def show_conversation_history_page() -> None:
                         st.divider()
                         
                         # Opción renombrar
-                        if st.button("✏️ Renombrar", key=f"rename_btn_{conv['session_id']}", use_container_width=True):
+                        if st.button("✏️ Renombrar", key=f"rename_btn_{conv['session_id']}", width='stretch'):
                             st.session_state[f'editing_title_{conv["session_id"]}'] = True
                             st.rerun()
                         
                         # Opción eliminar
-                        if st.button("🗑️ Eliminar", key=f"delete_btn_{conv['session_id']}", use_container_width=True, type="secondary"):
+                        if st.button("🗑️ Eliminar", key=f"delete_btn_{conv['session_id']}", width='stretch', type="secondary"):
                             if st.session_state.get(f'confirm_delete_{conv["session_id"]}'):
                                 # Confirmar eliminación
                                 if delete_conversation(conv['session_id']):

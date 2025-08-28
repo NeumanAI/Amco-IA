@@ -177,7 +177,7 @@ def show_roles_management_page():
         roles_data, role_options, error_load, error_message = load_roles_data_for_display()
         if st.button("🔄 Refrescar"): st.rerun()
         if error_load: st.error(error_message or "Error."); st.warning("Verifica BD."); st.stop()
-        if roles_data: st.dataframe(pd.DataFrame(roles_data), use_container_width=True, hide_index=True, column_config={"ID":st.column_config.NumberColumn(width="small"), "Nombre":st.column_config.TextColumn(width="medium"), "Descripción":st.column_config.TextColumn(width="large"), "Permisos":st.column_config.TextColumn(width="xlarge"),})
+        if roles_data: st.dataframe(pd.DataFrame(roles_data), width='stretch', hide_index=True, column_config={"ID":st.column_config.NumberColumn(width="small"), "Nombre":st.column_config.TextColumn(width="medium"), "Descripción":st.column_config.TextColumn(width="large"), "Permisos":st.column_config.TextColumn(width="xlarge"),})
         else: st.info("No hay roles.")
         st.divider(); st.subheader("Acciones"); c1,c2,c3=st.columns([1.5,3,1.5])
         # --- CORRECCIÓN AttributeError: usar get con default y luego lower ---
@@ -185,7 +185,7 @@ def show_roles_management_page():
         is_super = current_user_role_lower == 'superadministrador'
         # --- FIN CORRECCIÓN ---
         with c1:
-            if st.button("➕ Crear", use_container_width=True, disabled=not is_super): st.session_state.role_action='create'; st.session_state.editing_role_id=None; st.session_state.deleting_role_id=None
+            if st.button("➕ Crear", width='stretch', disabled=not is_super): st.session_state.role_action='create'; st.session_state.editing_role_id=None; st.session_state.deleting_role_id=None
         with c2:
             # Usar role_options (lista de tuples) para crear mapa
             opts_map={label: id_ for label, id_ in role_options}; opts_disp={"":"Seleccione..."}; opts_disp.update(opts_map)
@@ -202,10 +202,10 @@ def show_roles_management_page():
              if not is_super and cur_sel_id: del_tooltip="Solo Superadmin"
              # --- FIN CORRECCIÓN ---
              with ce:
-                  if st.button("✏️", key="edit_role_btn", help="Editar", use_container_width=True, disabled=not can_edit): st.session_state.role_action='edit'; st.session_state.editing_role_id=cur_sel_id; st.session_state.deleting_role_id=None
+                  if st.button("✏️", key="edit_role_btn", help="Editar", width='stretch', disabled=not can_edit): st.session_state.role_action='edit'; st.session_state.editing_role_id=cur_sel_id; st.session_state.deleting_role_id=None
              with cd:
                   disable_del = not cur_sel_id or cur_sel_name_lower == 'superadministrador' or not is_super
-                  if st.button("🗑️", key="del_role_btn", help=del_tooltip, use_container_width=True, disabled=disable_del): st.session_state.role_action='delete'; st.session_state.deleting_role_id=cur_sel_id; st.session_state.editing_role_id=None
+                  if st.button("🗑️", key="del_role_btn", help=del_tooltip, width='stretch', disabled=disable_del): st.session_state.role_action='delete'; st.session_state.deleting_role_id=cur_sel_id; st.session_state.editing_role_id=None
         action=st.session_state.get('role_action'); edit_id=st.session_state.get('editing_role_id'); del_id=st.session_state.get('deleting_role_id')
         if action=='create': create_role_dialog()
         elif action=='edit' and edit_id is not None: edit_role_dialog(role_id=edit_id)
