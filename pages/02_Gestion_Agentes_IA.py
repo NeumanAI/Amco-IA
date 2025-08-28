@@ -162,9 +162,13 @@ def manage_agent_roles_dialog(agent_id: int):
     """Diálogo para gestionar qué roles tienen acceso a un agente específico."""
     log.info(f"Render manage roles dialog for agent ID: {agent_id}")
     
+    # Variables para almacenar datos fuera de la sesión DB
+    agent_name = None
+    all_roles_data = []
+    
     try:
         with get_db_session() as db:
-            # Obtener información del agente
+            # Obtener información del agente y extraer datos primitivos
             agent = db.query(Agent).filter(Agent.id == agent_id).first()
             if not agent:
                 st.error(f"Agente ID {agent_id} no encontrado.")
@@ -174,13 +178,24 @@ def manage_agent_roles_dialog(agent_id: int):
                 st.rerun()
                 return
             
-            # Obtener todos los roles disponibles
+            # Extraer datos primitivos del agente
+            agent_name = agent.name
+            
+            # Obtener todos los roles disponibles y extraer datos primitivos
             all_roles = db.query(Role).order_by(Role.name).all()
             if not all_roles:
                 st.warning("No hay roles configurados en el sistema.")
                 return
+            
+            # Convertir roles a datos primitivos
+            for role in all_roles:
+                all_roles_data.append({
+                    'id': role.id,
+                    'name': role.name
+                })
         
-        st.subheader(f"🔐 Gestionar Accesos: {agent.name}")
+        # Mostrar información del agente usando datos primitivos
+        st.subheader(f"🔐 Gestionar Accesos: {agent_name}")
         st.caption(f"Configura qué roles pueden acceder al agente ID: {agent_id}")
         
         # Obtener configuración actual de accesos
@@ -192,8 +207,9 @@ def manage_agent_roles_dialog(agent_id: int):
         with st.form(key=f"agent_roles_form_{agent_id}"):
             changes_made = {}
             
-            for role in all_roles:
-                role_name = role.name
+            for role_data in all_roles_data:
+                role_id = role_data['id']
+                role_name = role_data['name']
                 current_level = current_access.get(role_name, 'no_access')
                 
                 # Para SuperAdministrador, siempre acceso completo y deshabilitado
@@ -223,12 +239,12 @@ def manage_agent_roles_dialog(agent_id: int):
                         options=access_options,
                         index=current_index,
                         format_func=lambda x: access_labels[x],
-                        key=f"role_access_{role.id}_{agent_id}",
+                        key=f"role_access_{role_id}_{agent_id}",
                         label_visibility="collapsed"
                     )
                     
                     if new_access != current_level:
-                        changes_made[role.id] = new_access
+                        changes_made[role_id] = new_access
             
             st.markdown("---")
             
