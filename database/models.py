@@ -68,6 +68,44 @@ class Query(Base):
     agent = relationship('Agent', back_populates='queries')
     def __repr__(self): return f"<Query(id={self.id}, agent_id={self.agent_id})>"
 
+# --- MODELO CONVERSATION PARA HISTORIAL DINÁMICO ---
+class Conversation(Base):
+    """Modelo para gestionar conversaciones con historial dinámico similar a OpenAI."""
+    __tablename__ = 'conversations'
+    
+    id = Column(Integer, primary_key=True)
+    session_id = Column(String(36), unique=True, nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    agent_id = Column(Integer, ForeignKey('agents.id'), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=get_current_time_colombia)
+    updated_at = Column(DateTime(timezone=True), default=get_current_time_colombia, onupdate=get_current_time_colombia)
+    message_count = Column(Integer, default=0, nullable=False)
+    
+    # Relationships
+    agent = relationship('Agent', foreign_keys=[agent_id])
+    user = relationship('User', foreign_keys=[user_id])
+    
+    # Índices adicionales
+    __table_args__ = (
+        Index('ix_conversation_updated_at', 'updated_at'),
+        Index('ix_conversation_user_agent', 'user_id', 'agent_id'),
+    )
+    
+    def __repr__(self): 
+        return f"<Conversation(id={self.id}, session_id='{self.session_id}', title='{self.title[:30]}...')>"
+    
+    def get_messages(self):
+        """Obtiene los mensajes de esta conversación ordenados por fecha."""
+        from database.database import get_db_session
+        try:
+            with get_db_session() as db:
+                return db.query(Query).filter(
+                    Query.session_id == self.session_id
+                ).order_by(Query.created_at.asc()).all()
+        except Exception:
+            return []
+
 # --- NUEVOS MODELOS PARA OPCIONES DE AGENTE ---
 
 class AgentOptionBase(Base):
@@ -95,3 +133,59 @@ class PersonalityOption(AgentOptionBase):
 class GoalOption(AgentOptionBase):
     """Opciones para Objetivos."""
     __tablename__ = 'agent_options_goals'
+
+# --- NUEVOS MODELOS PARA CONTROL DE ACCESO AVANZADO ---
+
+class RoleAgentAccess(Base):
+    """Modelo para controlar qué roles pueden acceder a qué agentes."""
+    __tablename__ = 'role_agent_access'
+    
+    id = Column(Integer, primary_key=True)
+    role_id = Column(Integer, ForeignKey('roles.id', ondelete='CASCADE'), nullable=False, index=True)
+    agent_id = Column(Integer, ForeignKey('agents.id', ondelete='CASCADE'), nullable=False, index=True)
+    access_level = Column(String(20), nullable=False, default='read_only', index=True)
+    created_at = Column(DateTime(timezone=True), default=get_current_time_colombia)
+    updated_at = Column(DateTime(timezone=True), default=get_current_time_colombia, onupdate=get_current_time_colombia)
+    
+    # Relationships
+    role = relationship('Role', foreign_keys=[role_id])
+    agent = relationship('Agent', foreign_keys=[agent_id])
+    
+    # Índices adicionales
+    __table_args__ = (
+        Index('ix_role_agent_unique', 'role_id', 'agent_id', unique=True),
+    )
+    
+    def __repr__(self):
+        return f"<RoleAgentAccess(role_id={self.role_id}, agent_id={self.agent_id}, access={self.access_level})>"
+    
+    def can_interact(self) -> bool:
+        """Verifica si el nivel de acceso permite interacción con el agente."""
+        return self.access_level in ['full_access']
+    
+    def can_view(self) -> bool:
+        """Verifica si el nivel de acceso permite ver el agente."""
+        return self.access_level in ['read_only', 'full_access']
+
+class UserPreferences(Base):
+    """Modelo para preferencias y configuraciones de usuario."""
+    __tablename__ = 'user_preferences'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    preference_key = Column(String(100), nullable=False, index=True)
+    preference_value = Column(Text)
+    category = Column(String(50), default='general', index=True)
+    created_at = Column(DateTime(timezone=True), default=get_current_time_colombia)
+    updated_at = Column(DateTime(timezone=True), default=get_current_time_colombia, onupdate=get_current_time_colombia)
+    
+    # Relationships
+    user = relationship('User', foreign_keys=[user_id])
+    
+    # Índices adicionales
+    __table_args__ = (
+        Index('ix_user_pref_unique', 'user_id', 'preference_key', unique=True),
+    )
+    
+    def __repr__(self):
+        return f"<UserPreferences(user_id={self.user_id}, key='{self.preference_key}')>"

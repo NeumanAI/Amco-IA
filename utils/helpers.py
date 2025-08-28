@@ -27,6 +27,7 @@ PAGE_PERMISSION_MAP = {
     "Roles": "pages/07_Roles.py",
     "Configuración": "pages/08_Configuracion.py",
     "Mi Perfil": "pages/09_Mi_Perfil.py",
+    "Control de Acceso": "pages/10_Control_Acceso_Agentes.py",
 }
 
 # --- NUEVA FUNCIÓN VITAL PARA RESTAURAR LA SESIÓN ---
@@ -89,7 +90,7 @@ def render_sidebar():
         # 1. Mostrar logo si está configurado (CON PARÁMETRO CORREGIDO)
         logo_sidebar_url = get_configuration('logo_url', 'general', None)
         if logo_sidebar_url:
-            st.image(logo_sidebar_url, use_container_width=True) # <-- CORRECCIÓN 3
+            st.image(logo_sidebar_url, width='stretch') # <-- CORRECCIÓN 3
             st.divider()
 
         # 2. Definir la estructura del menú (secciones y páginas)
@@ -135,5 +136,5 @@ def render_sidebar():
         st.markdown("---")
 
         # 6. Botón de Cerrar Sesión (usando la función logout importada)
-        if st.button("🚪 Cerrar Sesión", key="logout_sidebar_button", use_container_width=True, type="primary"):
+        if st.button("🚪 Cerrar Sesión", key="logout_sidebar_button", width='stretch', type="primary"):
             logout()

@@ -162,7 +162,7 @@ def show_query_analysis_page():
                  )
                  fig_volume.update_layout(showlegend=False, margin=dict(t=5, b=5, l=5, r=5), height=350)
                  fig_volume.update_traces(line_color='#1f77b4') # Azul Plotly
-                 st.plotly_chart(fig_volume, use_container_width=True)
+                 st.plotly_chart(fig_volume, width='stretch')
             else:
                  st.caption("No hay datos de volumen para mostrar.")
         except Exception as e:
@@ -183,7 +183,7 @@ def show_query_analysis_page():
                  )
                  fig_success.update_layout(showlegend=False, margin=dict(t=5, b=5, l=5, r=5), height=350)
                  fig_success.update_traces(line_color='#2ca02c') # Verde Plotly
-                 st.plotly_chart(fig_success, use_container_width=True)
+                 st.plotly_chart(fig_success, width='stretch')
              else:
                  st.caption("No hay datos de tasa de éxito para mostrar.")
          except Exception as e:
@@ -210,7 +210,7 @@ def show_query_analysis_page():
              fig_resp_time.add_vline(x=p90_time, line_dash="longdashdot", line_color="purple", annotation_text=f"P90: {p90_time:.0f} ms")
 
              fig_resp_time.update_layout(margin=dict(t=30, b=10, l=10, r=10), height=400)
-             st.plotly_chart(fig_resp_time, use_container_width=True)
+             st.plotly_chart(fig_resp_time, width='stretch')
              st.caption(f"Estadísticas: Promedio={avg_time:.0f}ms, Mediana={median_time:.0f}ms, Percentil 90={p90_time:.0f}ms")
         else:
              st.caption("No hay datos válidos de tiempo de respuesta para mostrar.")
@@ -255,7 +255,7 @@ def show_query_analysis_page():
                    labels={'Frecuencia': 'Nº Apariciones', 'Palabra': 'Palabra'}
               )
               fig_words.update_layout(margin=dict(t=5, b=5, l=5, r=5), height=450)
-              st.plotly_chart(fig_words, use_container_width=True)
+              st.plotly_chart(fig_words, width='stretch')
          else:
               st.caption("No se encontraron palabras significativas para analizar después de filtrar.")
 

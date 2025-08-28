@@ -56,7 +56,7 @@ def show_profile_page():
                     c_pwd1, c_pwd2 = st.columns(2)
                     with c_pwd1: pwd_new1=st.text_input("Nueva *", type="password", key="profile_new_pwd1", help=pw_hint)
                     with c_pwd2: pwd_new2=st.text_input("Confirmar Nueva *", type="password", key="profile_new_pwd2")
-                st.markdown("---"); submitted = st.form_submit_button("💾 Guardar Cambios", type="primary", use_container_width=True)
+                st.markdown("---"); submitted = st.form_submit_button("💾 Guardar Cambios", type="primary", width='stretch')
 
                 if submitted:
                     errors = []; email_changed = (st.session_state.profile_email != user.email); pwd_req = chg_pwd; valid_new_pwd = False
